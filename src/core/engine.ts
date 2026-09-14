@@ -18,7 +18,7 @@ import { discoverConventions, selectConventionFacts } from "../repo/conventions.
 import { inspectConventionDrift } from "../verify/convention-drift.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
 import { assessRisk } from "./risk.js";
-import { routeSkills } from "./skills.js";
+import { loadSkill, routeSkills, type SkillName } from "./skills.js";
 import { fingerprintFiles } from "../repo/index.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
@@ -32,7 +32,7 @@ export class GauntletEngine {
       const state = await this.store.loadTask(id);
       const context = await createContextPacket(this.cwd, state.contract, state.conventions, state.baseline.index);
       const ambiguity = detectAmbiguity(state.contract);
-      return { state, injection: `${STEERING_POLICY}\n\n${formatContext(context)}`, clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
+      return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -43,7 +43,7 @@ export class GauntletEngine {
     const risk = assessRisk(contract);
     const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0 } };
     await this.store.saveTask(state);
-    return { state, injection: `${STEERING_POLICY}\n\n${formatContext(context)}`, clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
+    return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
 
   async activity(id: string, activity: TaskActivity): Promise<ActivityResult> {
@@ -82,6 +82,11 @@ export class GauntletEngine {
   async retry(id: string): Promise<void> {
     await this.store.updateTask(id, (state) => { state.attempts += 1; });
   }
+}
+
+async function injection(context: Awaited<ReturnType<typeof createContextPacket>>, skills: SkillName[]): Promise<string> {
+  const loaded = await Promise.all(skills.slice(0, DEFAULT_INTERVENTION_BUDGET.skillInvocations).map(async (name) => { try { return await loadSkill(name); } catch { return ""; } }));
+  return [STEERING_POLICY, formatContext(context), ...loaded.filter(Boolean)].join("\n\n");
 }
 
 function deduplicateFindings<T extends { code: string; evidence: string[] }>(findings: T[]): T[] {

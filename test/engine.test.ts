@@ -15,7 +15,7 @@ test("engine executes a task lifecycle against its task-start baseline", async (
     await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
     await writeFile(join(cwd, "preexisting.ts"), "dirty before task\n");
     const engine = new GauntletEngine(cwd), started = await engine.start("Change feature.ts without adding dependencies", "task-1");
-    assert.match(started.injection, /smallest justified/); assert.equal(started.clarification, null);
+    assert.match(started.injection, /smallest justified/); assert.match(started.injection, /# IMPLEMENT/); assert.equal(started.clarification, null);
     await writeFile(join(cwd, "feature.ts"), "const newValue = 2;\n");
     const result = await engine.finish("task-1");
     assert.equal(result.files, 1); assert.equal(result.verified, true); assert.equal(result.firstPass, true);

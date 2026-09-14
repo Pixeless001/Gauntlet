@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { TaskContract } from "./events.js";
 import type { TaskRisk } from "./risk.js";
 
@@ -15,6 +16,10 @@ export function routeSkills(contract: TaskContract, phase: "start" | "activity" 
   return ["implement"];
 }
 
-export async function loadSkill(cwd: string, name: SkillName): Promise<string> {
-  return readFile(join(cwd, "skills", name, "SKILL.md"), "utf8");
+export async function loadSkill(name: SkillName): Promise<string> {
+  const moduleRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+  const roots = moduleRoot.endsWith(`${process.platform === "win32" ? "\\" : "/"}dist`) ? [join(moduleRoot, ".."), moduleRoot] : [moduleRoot];
+  let failure: unknown;
+  for (const root of roots) try { return await readFile(join(root, "skills", name, "SKILL.md"), "utf8"); } catch (error) { failure = error; }
+  throw failure;
 }
