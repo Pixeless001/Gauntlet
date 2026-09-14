@@ -44,9 +44,10 @@ test("measurement does not equate absent tests with verification", () => {
   assert.equal(value.clean, true); assert.equal(value.verified, false); assert.equal(value.firstPass, false);
 });
 
-test("unresolved warnings prevent a clean result", () => {
-  const value = state(); value.findings.push({ code: "dependency-added", severity: "warning", message: "review", evidence: ["x"] });
-  assert.equal(measure(value, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, false);
+test("only blocking findings prevent a clean result", () => {
+  const advisory = state(); advisory.findings.push({ code: "dependency-added", severity: "warning", blocking: false, message: "review", evidence: ["x"] });
+  const blocking = state(); blocking.findings.push({ code: "test-deleted", severity: "error", blocking: true, message: "restore", evidence: ["x"] });
+  assert.equal(measure(advisory, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, true); assert.equal(measure(blocking, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, false);
 });
 
 test("state ids cannot escape the local state directory", async () => {
