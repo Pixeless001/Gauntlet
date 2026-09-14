@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -47,6 +47,15 @@ test("collects usage for competing dependencies in one bounded pass", async () =
     await writeFile(join(cwd, "src/a.ts"), "import { z } from 'zod'; import Joi from 'joi'"); await writeFile(join(cwd, "src/b.ts"), "const z = require('zod'); const Joi = require('joi')");
     const validation = (await discoverConventions(cwd)).facts.filter((fact) => fact.id === "primitive.validation");
     assert.equal(validation.length, 2); assert.ok(validation.every((fact) => fact.strength === "strong" && fact.representatives.length === 2));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("downgrades cached local conventions when representative evidence disappears", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-conventions-"));
+  try {
+    await mkdir(join(cwd, "src/lib"), { recursive: true }); await writeFile(join(cwd, "src/lib/retry.ts"), "export {}"); await writeFile(join(cwd, "src/lib/retry-helper.ts"), "export {}");
+    assert.equal((await discoverConventions(cwd)).facts.find((fact) => fact.id === "primitive.retry")?.strength, "strong");
+    await unlink(join(cwd, "src/lib/retry-helper.ts")); assert.equal((await discoverConventions(cwd)).facts.find((fact) => fact.id === "primitive.retry")?.strength, "medium");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

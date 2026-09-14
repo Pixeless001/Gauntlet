@@ -102,12 +102,13 @@ const capabilityForPath = (path: string) => ["retry", "http", "logging", "error"
 
 export async function discoverConventions(cwd: string, touched: string[] = [], budget = DEFAULT_CONVENTION_BUDGET, index?: RepoIndex): Promise<RepoConventionProfile> {
   const cache = new ConventionCache(cwd), cached = await cache.load(), all = (index?.files ?? await walk(cwd)).slice(0, budget.maxFiles);
-  const candidates = [...new Set([...touched, ...all.filter((path) => primitivePattern.test(path)).slice(0, budget.maxSearchResults)])];
+  const indexed = new Set(all), candidates = [...new Set([...touched.filter((path) => indexed.has(path)), ...all.filter((path) => primitivePattern.test(path)).slice(0, budget.maxSearchResults)])];
   const discovered = [...await packageFacts(cwd, all, budget), ...await configFacts(cwd)];
   for (const path of candidates) {
     const capability = capabilityForPath(path); if (!capability) continue;
     const peers = candidates.filter((item) => capabilityForPath(item) === capability);
-    discovered.push({ id: `primitive.${capability}`, category: "primitive", value: "local", strength: peers.length >= 2 ? "strong" : "medium", scope: dirname(path), sources: [await source(cwd, path)], representatives: peers.slice(0, 4) });
+    const representatives = peers.slice(0, 4);
+    discovered.push({ id: `primitive.${capability}`, category: "primitive", value: "local", strength: peers.length >= 2 ? "strong" : "medium", scope: dirname(path), sources: await Promise.all(representatives.map((item) => source(cwd, item))), representatives });
   }
   const testFiles = all.filter((path) => /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(path));
   if (testFiles.length >= 2) {
@@ -119,7 +120,7 @@ export async function discoverConventions(cwd: string, touched: string[] = [], b
   const services = all.filter((path) => /(?:^|\/)services\//.test(path));
   if (routes.length >= 2 && repositories.length >= 2 && services.length >= 2) discovered.push({ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sources: await Promise.all([...routes.slice(0, 2), ...services.slice(0, 2), ...repositories.slice(0, 2)].map((path) => source(cwd, path))), representatives: [routes[0]!, services[0]!, repositories[0]!] });
   const merged = new Map(cached.facts.map((fact) => [`${fact.id}:${fact.value}@${fact.scope}`, fact]));
-  for (const fact of discovered) { const key = `${fact.id}:${fact.value}@${fact.scope}`, previous = merged.get(key); if (!previous || rank(fact.strength) >= rank(previous.strength)) merged.set(key, fact); }
+  for (const fact of discovered) merged.set(`${fact.id}:${fact.value}@${fact.scope}`, fact);
   const profile: RepoConventionProfile = { version: 1, facts: [...merged.values()].slice(0, 80) }; await cache.save(profile); return profile;
 }
 
