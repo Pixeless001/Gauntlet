@@ -42,11 +42,12 @@ export class GauntletEngine {
   }
 
   async activity(id: string, activity: TaskActivity): Promise<ActivityResult> {
-    const state = await this.store.loadTask(id); state.activities.push(activity);
-    const loop = loopFinding(state);
-    if (loop && !state.findings.some((finding) => finding.code === loop.code)) state.findings.push(loop);
+    const state = await this.store.updateTask(id, (value) => {
+      value.activities.push(activity); const loop = loopFinding(value);
+      if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
+    });
     const continuation = shouldCompact(state).compact ? compact(state) : null;
-    await this.store.saveTask(state); return { state, continuation };
+    return { state, continuation };
   }
 
   async finish(id: string): Promise<TaskMeasurement> {
@@ -66,7 +67,7 @@ export class GauntletEngine {
   }
 
   async retry(id: string): Promise<void> {
-    const state = await this.store.loadTask(id); state.attempts += 1; await this.store.saveTask(state);
+    await this.store.updateTask(id, (state) => { state.attempts += 1; });
   }
 }
 

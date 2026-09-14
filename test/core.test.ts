@@ -44,3 +44,12 @@ test("state ids cannot escape the local state directory", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-"));
   try { await assert.rejects(new StateStore(cwd).loadTask("../../outside"), /Invalid task id/); } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("concurrent state updates do not lose activities", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-")), store = new StateStore(cwd), value = state();
+  try {
+    value.repository = cwd; await store.saveTask(value);
+    await Promise.all(Array.from({ length: 20 }, (_, index) => store.updateTask("task", (current) => { current.activities.push({ kind: "command", target: String(index), outputBytes: 0 }); })));
+    assert.equal((await store.loadTask("task")).activities.length, 20);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

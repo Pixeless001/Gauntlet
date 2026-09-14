@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectRepository } from "../src/repo/detect.js";
 import { selectContext } from "../src/repo/context.js";
+import { formatContext } from "../src/core/context.js";
 import { captureBaseline, changedFiles } from "../src/repo/git.js";
 import { run } from "../src/repo/process.js";
 
@@ -42,4 +43,11 @@ test("ranks explicit paths and bounds context", () => fixture(async (cwd) => {
   await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src", "retry.ts"), ""); await writeFile(join(cwd, "src", "other.ts"), "");
   const packet = await selectContext(cwd, { intent: "Fix src/retry.ts", explicitPaths: ["src/retry.ts"], acceptanceCriteria: [], constraints: [] }, 1);
   assert.equal(packet.entries[0]?.path, "src/retry.ts"); assert.equal(packet.entries.length, 1);
+}));
+
+test("injects only applicable instructions in precedence order", () => fixture(async (cwd) => {
+  await mkdir(join(cwd, "src/feature"), { recursive: true }); await mkdir(join(cwd, "other"));
+  await writeFile(join(cwd, "AGENTS.md"), "root rule"); await writeFile(join(cwd, "src/AGENTS.md"), "src rule"); await writeFile(join(cwd, "other/AGENTS.md"), "other rule"); await writeFile(join(cwd, "src/feature/task.ts"), "");
+  const packet = await selectContext(cwd, { intent: "Fix src/feature/task.ts", explicitPaths: ["src/feature/task.ts"], acceptanceCriteria: [], constraints: [] });
+  assert.deepEqual(packet.instructions.map((value) => value.split(":")[0]), ["AGENTS.md", "src/AGENTS.md"]); assert.match(formatContext(packet), /root rule[\s\S]*src rule/); assert.doesNotMatch(formatContext(packet), /other rule/);
 }));

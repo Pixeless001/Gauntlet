@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { walk } from "./tests.js";
 import type { TaskContract } from "../core/events.js";
 import type { ConventionFact } from "./conventions.js";
@@ -17,9 +17,12 @@ export async function selectContext(cwd: string, contract: TaskContract, limit =
     if (["package.json", "tsconfig.json", "cargo.toml", "pyproject.toml"].includes(basename(lower))) score += 1;
     return { path, score, reason: score >= 20 ? "explicit task scope" : /test|spec/.test(lower) ? "related test candidate" : "task term match" };
   }).filter((entry) => entry.score > 0).sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
-  const instructionFiles = files.filter((path) => ["AGENTS.md", "CLAUDE.md"].includes(basename(path)));
+  const targets = [...contract.explicitPaths, ...scored.slice(0, limit).map((entry) => entry.path)];
+  const instructionFiles = files.filter((path) => ["AGENTS.md", "CLAUDE.md"].includes(basename(path))).filter((path) => {
+    const scope = dirname(path); return scope === "." || targets.some((target) => target === scope || target.startsWith(`${scope}/`));
+  }).sort((a, b) => dirname(a).split("/").length - dirname(b).split("/").length || a.localeCompare(b));
   const instructions: string[] = [];
-  for (const path of instructionFiles.slice(0, 4)) instructions.push(`${path}: ${(await readFile(join(cwd, path), "utf8")).slice(0, 2_000)}`);
+  for (const path of instructionFiles.slice(-4)) instructions.push(`${path}: ${(await readFile(join(cwd, path), "utf8")).slice(0, 2_000)}`);
   return { entries: scored.slice(0, limit), instructions, conventions: conventions.slice(0, 3), excluded: Math.max(0, scored.length - limit) };
 }
 
