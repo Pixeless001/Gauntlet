@@ -26,6 +26,11 @@ function normalizePath(repository: string, path: string): string {
 
 function normalizeCommand(command: string): string { return command.replace(/\s+/g, " ").trim(); }
 
+function failedActivity(value: NativeEvent, name: string): boolean {
+  const response = { ...record(value.result), ...record(value.tool_response) }, status = String(response.status ?? "").toLowerCase();
+  return name.toLowerCase().includes("failure") || value.is_error === true || response.is_error === true || response.success === false || (typeof response.exit_code === "number" && response.exit_code !== 0) || ["error", "fail", "failed", "timeout"].includes(status);
+}
+
 function taskId(input: NativeEvent, name: string): string {
   const candidate = input.session_id ?? input.conversation_id ?? process.env.GAUNTLET_TASK_ID;
   if (typeof candidate === "string" && /^native-[a-f0-9]{24}$/.test(candidate)) return candidate;
@@ -41,7 +46,7 @@ export function translateNativeEvent(input: unknown, nativeEvents: string[], exp
   const base = { version: 1 as const, taskId: taskId(value, name), repository: typeof value.cwd === "string" ? value.cwd : process.cwd(), timestamp: new Date().toISOString() };
   if (["UserPromptSubmit", "beforeSubmitPrompt", "sessionStart"].includes(name)) return eventSchema.parse({ ...base, type: "task_start", intent: typeof value.prompt === "string" ? value.prompt : "Coding session" });
   if (["PostToolUse", "postToolUse", "PostToolUseFailure", "postToolUseFailure"].includes(name)) {
-    const failed = name.toLowerCase().includes("failure");
+    const failed = failedActivity(value, name);
     return eventSchema.parse({ ...base, type: "task_activity", activity: activity(value, base.repository, failed) });
   }
   return eventSchema.parse({ ...base, type: "before_stop" });

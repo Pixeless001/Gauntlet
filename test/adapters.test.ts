@@ -20,6 +20,11 @@ test("adapter records semantic file and command activity", () => {
   assert.equal(shell.type, "task_activity"); if (shell.type === "task_activity") assert.equal(shell.activity.target, "npm test -- auth");
 });
 
+test("adapter detects failures reported inside successful post-tool events", () => {
+  const event = codexAdapter.translate({ hook_event_name: "PostToolUse", session_id: "1", cwd: "/repo", tool_name: "Shell", tool_input: { command: "npm test -- auth" }, tool_response: { exit_code: 1 } });
+  assert.equal(event.type, "task_activity"); if (event.type === "task_activity") assert.equal(event.activity.outcome, "fail");
+});
+
 test("installation is idempotent and reversible", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-install-"));
   try {
