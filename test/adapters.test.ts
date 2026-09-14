@@ -10,6 +10,7 @@ test("adapter translates native events and rejects foreign events", () => {
   const event = codexAdapter.translate({ hook_event_name: "UserPromptSubmit", session_id: "1", cwd: "/repo", prompt: "fix" });
   assert.equal(event.type, "task_start"); assert.equal(event.repository, "/repo");
   assert.throws(() => codexAdapter.translate({}, "sessionStart"), /Unsupported native hook event/);
+  assert.throws(() => codexAdapter.translate({}, "Stop"), /stable session identifier/);
 });
 
 test("installation is idempotent and reversible", async () => {

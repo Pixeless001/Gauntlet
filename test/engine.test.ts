@@ -31,3 +31,12 @@ test("repeated finish is idempotent", async () => {
     const first = await engine.finish("task"), second = await engine.finish("task"); assert.deepEqual(second.findings, first.findings); assert.deepEqual(second.conventions, first.conventions);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("resolved finish findings do not poison later attempts", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-repair-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n");
+    const engine = new GauntletEngine(cwd); await engine.start("Change tests", "task"); await writeFile(join(cwd, "client.test.ts"), ""); assert.equal((await engine.finish("task")).clean, false);
+    await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n"); assert.equal((await engine.finish("task")).clean, true);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

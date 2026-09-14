@@ -53,7 +53,7 @@ export class GauntletEngine {
   async finish(id: string): Promise<TaskMeasurement> {
     const state = await this.store.loadTask(id), changes = await changedFiles(this.cwd, state.baseline);
     const current = [...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests), ...await inspectConventionDrift(this.cwd, state, changes)];
-    state.findings = deduplicateFindings([...state.findings, ...current]);
+    state.findings = deduplicateFindings(current);
     if (state.conventionMetrics) {
       state.conventionMetrics.dependencyConflicts = state.findings.filter((item) => item.code === "convention-dependency-conflict").length;
       state.conventionMetrics.duplicates = state.findings.filter((item) => item.code === "convention-duplicate-primitive").length;
