@@ -19,6 +19,7 @@ const testPattern = /(?:test|spec)\.[cm]?[jt]sx?$/;
 const configs = new Set(["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json", "pyproject.toml", "Cargo.toml", "Cargo.lock", "go.mod", "Gemfile"]);
 const git = (cwd: string, args: string[]) => run("git", args, cwd, 15_000);
 const fields = (value: string) => value.split("\0").filter(Boolean);
+const external = (path: string) => path !== ".gauntlet" && !path.startsWith(".gauntlet/");
 
 export async function fingerprintFiles(cwd: string, paths: string[]): Promise<Record<string, FileFingerprint>> {
   const result: Record<string, FileFingerprint> = {};
@@ -40,7 +41,7 @@ export function parseStatus(output: string): string[] {
     paths.push(entry.slice(3));
     if ((entry[0] === "R" || entry[0] === "C" || entry[1] === "R" || entry[1] === "C") && entries[index + 1]) paths.push(entries[++index]!);
   }
-  return [...new Set(paths)].filter((path) => path !== ".gauntlet" && !path.startsWith(".gauntlet/")).sort();
+  return [...new Set(paths)].filter(external).sort();
 }
 
 export async function createRepoIndex(cwd: string): Promise<RepoIndex> {
@@ -51,7 +52,7 @@ export async function createRepoIndex(cwd: string): Promise<RepoIndex> {
       git(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]),
       git(cwd, ["status", "--porcelain=v1", "-z"]),
     ]);
-    const files = [...new Set([...fields(tracked.stdout), ...fields(untracked.stdout)])].sort();
+    const files = [...new Set([...fields(tracked.stdout), ...fields(untracked.stdout)])].filter(external).sort();
     const dirty = parseStatus(status.stdout);
     return classify({ mode: "git", head: head.stdout.trim(), files, dirty, fingerprints: await fingerprintFiles(cwd, dirty) });
   }

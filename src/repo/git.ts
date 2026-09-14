@@ -35,7 +35,7 @@ export async function changedFiles(cwd: string, baseline?: Baseline): Promise<Fi
     }
     return [...deltas.values()].sort((a, b) => a.path.localeCompare(b.path));
   }
-  const currentPaths = await walk(cwd), paths = [...new Set([...baseline.index?.files ?? Object.keys(baseline.files), ...currentPaths])], current = await fingerprintFiles(cwd, currentPaths);
+  const currentPaths = await walk(cwd), current = await fingerprintFiles(cwd, currentPaths);
   return [...new Set([...Object.keys(baseline.files), ...Object.keys(current)])].filter((path) => baseline.files[path]?.hash !== current[path]?.hash).sort().map((path) => lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
 }
 

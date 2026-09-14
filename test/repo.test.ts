@@ -54,6 +54,12 @@ test("indexes tracked and untracked files once with classified metadata", () => 
   assert.equal(index.mode, "git"); assert.deepEqual(index.tests, ["src/client.test.ts"]); assert.ok(index.configs.includes("package.json")); assert.ok(index.dirty.includes("src/new.ts"));
 }));
 
+test("excludes Gauntlet's own state from subsequent task indexes", () => fixture(async (cwd) => {
+  await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+  await writeFile(join(cwd, "source.ts"), "source\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd); await mkdir(join(cwd, ".gauntlet")); await writeFile(join(cwd, ".gauntlet/state.test.ts"), "internal\n");
+  const index = await createRepoIndex(cwd); assert.equal(index.files.some((path) => path.startsWith(".gauntlet/")), false); assert.deepEqual(index.tests, []); assert.deepEqual(index.dirty, []);
+}));
+
 test("fingerprints only ambiguous dirty files in a Git baseline", () => fixture(async (cwd) => {
   await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
   await Promise.all(Array.from({ length: 200 }, (_, index) => writeFile(join(cwd, `file-${index}.ts`), "clean\n"))); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
