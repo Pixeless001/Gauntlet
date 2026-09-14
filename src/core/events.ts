@@ -33,6 +33,7 @@ export interface TaskContract {
 export interface Finding {
   code: string;
   severity: "info" | "warning" | "error";
+  blocking?: boolean;
   message: string;
   evidence: string[];
 }

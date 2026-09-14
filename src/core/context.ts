@@ -1,8 +1,9 @@
 import type { TaskContract } from "./events.js";
 import { selectContext, type ContextPacket } from "../repo/context.js";
 import type { ConventionFact } from "../repo/conventions.js";
+import type { RepoIndex } from "../repo/index.js";
 
-export async function createContextPacket(cwd: string, contract: TaskContract, conventions: ConventionFact[] = []): Promise<ContextPacket> { return selectContext(cwd, contract, 12, conventions); }
+export async function createContextPacket(cwd: string, contract: TaskContract, conventions: ConventionFact[] = [], index?: RepoIndex): Promise<ContextPacket> { return selectContext(cwd, contract, 12, conventions, index); }
 
 export function formatContext(packet: ContextPacket): string {
   const entries = packet.entries.map((entry) => `- ${entry.path} — ${entry.reason}`).join("\n");
