@@ -71,6 +71,15 @@ test("state loading rejects malformed and oversized records", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("state loading rejects records copied from another repository", async () => {
+  const first = await mkdtemp(join(tmpdir(), "gauntlet-state-first-")), second = await mkdtemp(join(tmpdir(), "gauntlet-state-second-"));
+  try {
+    const value = state(); value.repository = first; await new StateStore(first).saveTask(value);
+    await mkdir(join(second, ".gauntlet/tasks"), { recursive: true }); await writeFile(join(second, ".gauntlet/tasks/task.json"), JSON.stringify(value));
+    await assert.rejects(new StateStore(second).loadTask("task"), /Invalid Gauntlet task state/);
+  } finally { await rm(first, { recursive: true, force: true }); await rm(second, { recursive: true, force: true }); }
+});
+
 test("concurrent state updates do not lose activities", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-")), store = new StateStore(cwd), value = state();
   try {

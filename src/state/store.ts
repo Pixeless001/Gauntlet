@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { TaskState } from "../core/task-state.js";
 import type { TaskMeasurement } from "../core/measure.js";
 import { MAX_STATE_BYTES } from "../core/policy.js";
 
 export class StateStore {
   readonly directory: string;
-  constructor(cwd: string) { this.directory = join(cwd, ".gauntlet"); }
+  private readonly repository: string;
+  constructor(cwd: string) { this.repository = resolve(cwd); this.directory = join(this.repository, ".gauntlet"); }
   private taskPath(id: string) { if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw new Error("Invalid task id"); return join(this.directory, "tasks", `${id}.json`); }
   private async atomicWrite(path: string, value: unknown) {
     const content = JSON.stringify(value, null, 2);
@@ -19,7 +20,7 @@ export class StateStore {
     const content = await readFile(this.taskPath(id), "utf8");
     if (Buffer.byteLength(content) > MAX_STATE_BYTES) throw new Error("Gauntlet state exceeds 256KB");
     const state = JSON.parse(content) as TaskState;
-    if (state.version !== 1 || state.id !== id || typeof state.repository !== "string" || !Array.isArray(state.activities)) throw new Error("Invalid Gauntlet task state");
+    if (state.version !== 1 || state.id !== id || typeof state.repository !== "string" || resolve(state.repository) !== this.repository || !Array.isArray(state.activities)) throw new Error("Invalid Gauntlet task state");
     return state;
   }
   async updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState> {
@@ -27,7 +28,7 @@ export class StateStore {
     for (let attempt = 0; ; attempt++) {
       try { await mkdir(lock); await writeFile(join(lock, "owner"), `${process.pid}\n${Date.now()}\n`); break; } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt >= 250) throw error;
-        try { if (Date.now() - (await stat(lock)).mtimeMs > 30_000) await rm(lock, { recursive: true, force: true }); } catch { /* another writer released it */ }
+        try { if (Date.now() - (await stat(lock)).mtimeMs > 30_000 && !await liveOwner(lock)) await rm(lock, { recursive: true, force: true }); } catch { /* another writer released it */ }
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
     }
@@ -35,4 +36,12 @@ export class StateStore {
     finally { await rm(lock, { recursive: true, force: true }); }
   }
   async saveMeasurement(value: TaskMeasurement) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); }
+}
+
+async function liveOwner(lock: string): Promise<boolean> {
+  try {
+    const pid = Number((await readFile(join(lock, "owner"), "utf8")).split("\n")[0]);
+    if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+    process.kill(pid, 0); return true;
+  } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
