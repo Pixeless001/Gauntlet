@@ -16,6 +16,9 @@ import { deriveFacts } from "../repo/memory.js";
 import { compact, shouldCompact, type ContinuationRecord } from "./compact.js";
 import { discoverConventions, selectConventionFacts } from "../repo/conventions.js";
 import { inspectConventionDrift } from "../verify/convention-drift.js";
+import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
+import { assessRisk } from "./risk.js";
+import { routeSkills } from "./skills.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -36,7 +39,8 @@ export class GauntletEngine {
     const conventionProfile = await discoverConventions(this.cwd, contract.explicitPaths, undefined, baseline.index), conventions = selectConventionFacts(conventionProfile, contract);
     const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1 };
+    const risk = assessRisk(contract);
+    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET } } };
     await this.store.saveTask(state);
     return { state, injection: `${STEERING_POLICY}\n\n${formatContext(context)}`, clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
@@ -46,7 +50,8 @@ export class GauntletEngine {
       value.activities.push(activity); const loop = loopFinding(value);
       if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
     });
-    const continuation = shouldCompact(state).compact ? compact(state) : null;
+    const decision = shouldCompact(state), continuation = decision.compact ? compact(state) : null;
+    if (continuation) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });
     return { state, continuation };
   }
 

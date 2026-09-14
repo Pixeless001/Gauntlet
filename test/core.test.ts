@@ -39,6 +39,13 @@ test("repeated file reads compact while distinct command failures do not form a 
   assert.equal(loopFinding(value), null);
 });
 
+test("compaction respects its watermark and intervention budget", () => {
+  const value = state();
+  value.activities = Array.from({ length: 7 }, () => ({ kind: "file_read" as const, target: "same.ts", outcome: "pass" as const, outputBytes: 0 }));
+  value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 7, compactions: 1, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 2, extraLlmCalls: 0 } };
+  assert.equal(shouldCompact(value).compact, false);
+});
+
 test("measurement does not equate absent tests with verification", () => {
   const value = measure(state(), [], [], new Date("2026-01-01T00:00:01.000Z"));
   assert.equal(value.clean, true); assert.equal(value.verified, false); assert.equal(value.firstPass, false);
