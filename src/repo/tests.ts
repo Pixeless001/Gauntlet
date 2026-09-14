@@ -27,7 +27,7 @@ export async function captureTestSignatures(cwd: string, files?: string[]): Prom
   const result: Record<string, TestSignature> = {};
   const candidates = files ?? await walk(cwd);
   for (const file of candidates.filter((path) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(path))) {
-    const text = await readFile(join(cwd, file), "utf8");
+    let text: string; try { text = await readFile(join(cwd, file), "utf8"); } catch { continue; }
     result[file] = {
       assertions: text.split("\n").map((line) => line.trim().replace(/\s+/g, " ")).filter((line) => /\bexpect\s*\(|\bassert(?:\.|\s*\()/.test(line)),
       skipped: (text.match(/\b(?:it|test|describe)\.(?:skip|todo)\b/g) ?? []).length,

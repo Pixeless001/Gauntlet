@@ -52,7 +52,7 @@ export class GauntletEngine {
 
   async finish(id: string): Promise<TaskMeasurement> {
     const state = await this.store.loadTask(id), changes = await changedFiles(this.cwd, state.baseline);
-    const current = [...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests), ...await inspectConventionDrift(this.cwd, state, changes)];
+    const current = [...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests, changes), ...await inspectConventionDrift(this.cwd, state, changes)];
     state.findings = deduplicateFindings(current);
     if (state.conventionMetrics) {
       state.conventionMetrics.dependencyConflicts = state.findings.filter((item) => item.code === "convention-dependency-conflict").length;
@@ -60,7 +60,7 @@ export class GauntletEngine {
       state.conventionMetrics.architectureBypasses = state.findings.filter((item) => item.code === "convention-architecture-bypass").length;
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
-    const results = await runVerification(this.cwd, selectVerification(await detectRepository(this.cwd), changes));
+    const results = await runVerification(this.cwd, selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files));
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;

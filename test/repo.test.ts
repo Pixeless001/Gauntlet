@@ -66,3 +66,10 @@ test("injects only applicable instructions in precedence order", () => fixture(a
   const packet = await selectContext(cwd, { intent: "Fix src/feature/task.ts", explicitPaths: ["src/feature/task.ts"], acceptanceCriteria: [], constraints: [] });
   assert.deepEqual(packet.instructions.map((value) => value.split(":")[0]), ["AGENTS.md", "src/AGENTS.md"]); assert.match(formatContext(packet), /root rule[\s\S]*src rule/); assert.doesNotMatch(formatContext(packet), /other rule/);
 }));
+
+test("ranks direct imports and corresponding tests after the explicit target", () => fixture(async (cwd) => {
+  await mkdir(join(cwd, "src"));
+  await writeFile(join(cwd, "src/retry.ts"), "import { wait } from './wait.js'; export const retry = wait"); await writeFile(join(cwd, "src/wait.ts"), "export const wait = 1"); await writeFile(join(cwd, "src/retry.test.ts"), "import { retry } from './retry.js'; test('retry', () => retry)");
+  const packet = await selectContext(cwd, { intent: "Change src/retry.ts", explicitPaths: ["src/retry.ts"], acceptanceCriteria: [], constraints: [] });
+  assert.equal(packet.entries[0]?.path, "src/retry.ts"); assert.ok(packet.entries.some((entry) => entry.path === "src/wait.ts" && entry.reason.includes("imported"))); assert.ok(packet.entries.some((entry) => entry.path === "src/retry.test.ts" && entry.reason.includes("tests")));
+}));

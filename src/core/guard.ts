@@ -1,7 +1,6 @@
 import type { Finding } from "./events.js";
 import type { Baseline, FileDelta, TaskState } from "./task-state.js";
 import { detectDependencies } from "../repo/detect.js";
-import { captureTestSignatures } from "../repo/tests.js";
 
 export async function evaluateGuards(cwd: string, state: TaskState, changes: FileDelta[]): Promise<Finding[]> {
   const findings: Finding[] = [];
@@ -10,10 +9,6 @@ export async function evaluateGuards(cwd: string, state: TaskState, changes: Fil
   const dependencies = await detectDependencies(cwd);
   const added = dependencies.filter((item) => !state.baseline.dependencies.includes(item));
   if (added.length) findings.push({ code: "dependency-added", severity: "warning", message: "New runtime dependencies require justification.", evidence: added });
-  const tests = await captureTestSignatures(cwd);
-  const beforeSkipped = Object.values(state.baseline.tests).reduce((sum, test) => sum + test.skipped, 0);
-  const skipped = Object.values(tests).reduce((sum, test) => sum + test.skipped, 0);
-  if (skipped > beforeSkipped) findings.push({ code: "tests-skipped", severity: "error", message: "The number of skipped tests increased.", evidence: [`${beforeSkipped} → ${skipped}`] });
   const repeated = loopFinding(state);
   if (repeated) findings.push(repeated);
   return findings;
