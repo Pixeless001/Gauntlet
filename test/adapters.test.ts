@@ -13,6 +13,18 @@ test("adapter translates native events and rejects foreign events", () => {
   assert.throws(() => codexAdapter.translate({}, "Stop"), /stable session identifier/);
 });
 
+test("adapter records semantic file and command activity", () => {
+  const read = codexAdapter.translate({ hook_event_name: "PostToolUse", session_id: "1", cwd: "/repo", tool_name: "Read", tool_input: { file_path: "/repo/src/a.ts" } });
+  const shell = codexAdapter.translate({ hook_event_name: "PostToolUse", session_id: "1", cwd: "/repo", tool_name: "Shell", tool_input: { command: "npm   test -- auth" } });
+  assert.equal(read.type, "task_activity"); if (read.type === "task_activity") assert.deepEqual(read.activity, { kind: "file_read", target: "src/a.ts", outcome: "pass", outputBytes: 2 });
+  assert.equal(shell.type, "task_activity"); if (shell.type === "task_activity") assert.equal(shell.activity.target, "npm test -- auth");
+});
+
+test("adapter detects failures reported inside successful post-tool events", () => {
+  const event = codexAdapter.translate({ hook_event_name: "PostToolUse", session_id: "1", cwd: "/repo", tool_name: "Shell", tool_input: { command: "npm test -- auth" }, tool_response: { exit_code: 1 } });
+  assert.equal(event.type, "task_activity"); if (event.type === "task_activity") assert.equal(event.activity.outcome, "fail");
+});
+
 test("installation is idempotent and reversible", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-install-"));
   try {

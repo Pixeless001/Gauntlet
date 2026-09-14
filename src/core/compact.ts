@@ -19,7 +19,7 @@ export function compact(state: TaskState): ContinuationRecord {
     constraints: [...state.contract.constraints],
     repoConstraints: (state.conventions ?? []).filter((fact) => fact.strength === "strong").slice(0, 3).map((fact) => `${fact.id}: ${fact.value}`),
     workingSet: [...state.workingSet],
-    unresolved: state.findings.filter((item) => item.severity !== "info").map((item) => item.message),
+    unresolved: state.findings.filter((item) => item.blocking ?? item.severity !== "info").map((item) => item.message),
     failedApproaches: [...new Set(state.activities.filter((item) => item.outcome === "fail").map((item) => item.target).filter((x): x is string => Boolean(x)))],
   };
 }

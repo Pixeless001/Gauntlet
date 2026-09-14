@@ -4,6 +4,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
 import type { TaskContract } from "../core/events.js";
 import { walk } from "./tests.js";
+import type { RepoIndex } from "./index.js";
 
 export const conventionStrength = z.enum(["strong", "medium", "weak"]);
 const sourceSchema = z.object({ path: z.string().max(500), fingerprint: z.string().length(64) });
@@ -56,16 +57,33 @@ const dependencyCapabilities: Record<string, [string, string[]]> = {
 };
 export function dependencyCapability(name: string) { return dependencyCapabilities[name]?.[0] ?? null; }
 
-async function packageFacts(cwd: string): Promise<ConventionFact[]> {
+async function packageFacts(cwd: string, files: string[], budget: ConventionBudget): Promise<ConventionFact[]> {
   try {
     const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; scripts?: Record<string, string>; type?: string };
     const dependencies = { ...pkg.dependencies, ...pkg.devDependencies }, src = [await source(cwd, "package.json")], facts: ConventionFact[] = [];
-    for (const [name, [capability]] of Object.entries(dependencyCapabilities)) if (name in dependencies) facts.push({ id: capability === "test-runner" ? "tool.test-runner" : `primitive.${capability}`, category: capability === "test-runner" ? "tooling" : "primitive", value: name, strength: "strong", scope: ".", sources: src, representatives: [] });
+    const installed = Object.entries(dependencyCapabilities).filter(([name]) => name in dependencies), usage = new Map(installed.map(([name]) => [name, [] as string[]])); let bytes = 0;
+    for (const path of files.filter((file) => /\.[cm]?[jt]sx?$/.test(file)).slice(0, budget.maxFiles)) {
+      try {
+        const size = (await stat(join(cwd, path))).size; if (size > budget.maxBytes - bytes) break;
+        const content = await readFile(join(cwd, path), "utf8"); bytes += size;
+        for (const [name, [, imports]] of installed) if (usage.get(name)!.length < 4 && imports.some((module) => importsModule(content, module))) usage.get(name)!.push(path);
+      } catch { /* unreadable candidate */ }
+    }
+    for (const [name, [capability]] of installed) {
+      const representatives = usage.get(name)!, tooling = capability === "test-runner";
+      const declaredRunner = tooling && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(pkg.scripts?.test ?? "");
+      facts.push({ id: tooling ? "tool.test-runner" : `primitive.${capability}`, category: tooling ? "tooling" : "primitive", value: name, strength: declaredRunner || representatives.length >= 2 ? "strong" : "medium", scope: ".", sources: [...src, ...await Promise.all(representatives.map((path) => source(cwd, path)))].slice(0, 6), representatives });
+    }
     if (pkg.scripts?.lint) facts.push({ id: "tool.linter", category: "tooling", value: pkg.scripts.lint, strength: "strong", scope: ".", sources: src, representatives: [] });
     if (pkg.scripts?.format) facts.push({ id: "tool.formatter", category: "tooling", value: pkg.scripts.format, strength: "strong", scope: ".", sources: src, representatives: [] });
     if (pkg.type === "module") facts.push({ id: "api.module", category: "api", value: "esm", strength: "strong", scope: ".", sources: src, representatives: [] });
     return facts;
   } catch { return []; }
+}
+
+function importsModule(content: string, module: string): boolean {
+  const escaped = module.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:from\\s+|require\\(\\s*)["']${escaped}(?:[/'"]|$)`).test(content);
 }
 
 async function configFacts(cwd: string): Promise<ConventionFact[]> {
@@ -82,14 +100,15 @@ async function configFacts(cwd: string): Promise<ConventionFact[]> {
 const primitivePattern = /(?:^|\/)(?:lib|utils?|shared|common|infrastructure)\/.*(?:retry|http|client|logger|logging|errors?|validation|schema|pagination|config|serializ|cache|auth|database|db)/i;
 const capabilityForPath = (path: string) => ["retry", "http", "logging", "error", "validation", "pagination", "config", "serialization", "cache", "auth", "database"].find((word) => path.toLowerCase().includes(word))?.replace("error", "errors").replace("database", "db") ?? null;
 
-export async function discoverConventions(cwd: string, touched: string[] = [], budget = DEFAULT_CONVENTION_BUDGET): Promise<RepoConventionProfile> {
-  const cache = new ConventionCache(cwd), cached = await cache.load(), all = (await walk(cwd)).slice(0, budget.maxFiles);
-  const candidates = [...new Set([...touched, ...all.filter((path) => primitivePattern.test(path)).slice(0, budget.maxSearchResults)])];
-  const discovered = [...await packageFacts(cwd), ...await configFacts(cwd)];
+export async function discoverConventions(cwd: string, touched: string[] = [], budget = DEFAULT_CONVENTION_BUDGET, index?: RepoIndex): Promise<RepoConventionProfile> {
+  const cache = new ConventionCache(cwd), cached = await cache.load(), all = (index?.files ?? await walk(cwd)).slice(0, budget.maxFiles);
+  const indexed = new Set(all), candidates = [...new Set([...touched.filter((path) => indexed.has(path)), ...all.filter((path) => primitivePattern.test(path)).slice(0, budget.maxSearchResults)])];
+  const discovered = [...await packageFacts(cwd, all, budget), ...await configFacts(cwd)];
   for (const path of candidates) {
     const capability = capabilityForPath(path); if (!capability) continue;
     const peers = candidates.filter((item) => capabilityForPath(item) === capability);
-    discovered.push({ id: `primitive.${capability}`, category: "primitive", value: "local", strength: peers.length >= 2 ? "strong" : "medium", scope: dirname(path), sources: [await source(cwd, path)], representatives: peers.slice(0, 4) });
+    const representatives = peers.slice(0, 4);
+    discovered.push({ id: `primitive.${capability}`, category: "primitive", value: "local", strength: peers.length >= 2 ? "strong" : "medium", scope: dirname(path), sources: await Promise.all(representatives.map((item) => source(cwd, item))), representatives });
   }
   const testFiles = all.filter((path) => /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(path));
   if (testFiles.length >= 2) {
@@ -100,8 +119,8 @@ export async function discoverConventions(cwd: string, touched: string[] = [], b
   const repositories = all.filter((path) => /(?:^|\/)(?:repositories|repos)\//.test(path));
   const services = all.filter((path) => /(?:^|\/)services\//.test(path));
   if (routes.length >= 2 && repositories.length >= 2 && services.length >= 2) discovered.push({ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sources: await Promise.all([...routes.slice(0, 2), ...services.slice(0, 2), ...repositories.slice(0, 2)].map((path) => source(cwd, path))), representatives: [routes[0]!, services[0]!, repositories[0]!] });
-  const merged = new Map(cached.facts.map((fact) => [fact.id + "@" + fact.scope, fact]));
-  for (const fact of discovered) { const key = fact.id + "@" + fact.scope, previous = merged.get(key); if (!previous || rank(fact.strength) >= rank(previous.strength)) merged.set(key, fact); }
+  const merged = new Map(cached.facts.map((fact) => [`${fact.id}:${fact.value}@${fact.scope}`, fact]));
+  for (const fact of discovered) merged.set(`${fact.id}:${fact.value}@${fact.scope}`, fact);
   const profile: RepoConventionProfile = { version: 1, facts: [...merged.values()].slice(0, 80) }; await cache.save(profile); return profile;
 }
 

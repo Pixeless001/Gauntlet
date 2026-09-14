@@ -14,6 +14,15 @@ test("verification uses declared tools and stops without changes", () => {
   assert.deepEqual(selectVerification(profile, [{ path: "a.ts", added: 1, removed: 0 }]).checks.map((item) => item.id), ["typecheck", "repository-tests"]);
 });
 
+test("verification targets related tests for known runners and falls back for broad changes", () => {
+  const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], testRunner: "vitest" as const, commands: [{ name: "test", command: "npm", args: ["run", "test"] }] };
+  const targeted = selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }], ["src/auth.ts", "src/auth.test.ts"]);
+  assert.equal(targeted.checks[0]?.id, "impacted-tests"); assert.deepEqual(targeted.checks[0]?.args, ["run", "test", "--", "src/auth.test.ts"]);
+  assert.equal(selectVerification(profile, [{ path: "package.json", added: 1, removed: 1 }], ["src/auth.test.ts"]).checks[0]?.id, "repository-tests");
+  assert.equal(selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }, { path: "src/billing.ts", added: 1, removed: 0 }], ["src/auth.test.ts"]).checks[0]?.id, "repository-tests");
+  assert.equal(selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }], ["src/authz.test.ts"]).checks[0]?.id, "repository-tests");
+});
+
 test("test integrity compares against task-start assertions, not HEAD", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-integrity-")), path = join(cwd, "client.test.ts");
   try {

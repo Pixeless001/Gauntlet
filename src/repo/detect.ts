@@ -4,7 +4,7 @@ import { join } from "node:path";
 async function exists(path: string) { try { await access(path); return true; } catch { return false; } }
 
 export interface ToolCommand { name: string; command: string; args: string[] }
-export interface RepoProfile { packageManager: string | null; language: string[]; commands: ToolCommand[]; harnesses: string[] }
+export interface RepoProfile { packageManager: string | null; language: string[]; commands: ToolCommand[]; harnesses: string[]; testRunner?: "node" | "vitest" | "jest" | "pytest" }
 
 export async function detectDependencies(cwd: string): Promise<string[]> {
   try {
@@ -21,10 +21,12 @@ export async function detectRepository(cwd: string): Promise<RepoProfile> {
   if (await exists(join(cwd, "pyproject.toml"))) languages.push("python");
   const harnesses = (await Promise.all([["claude-code", ".claude"], ["cursor", ".cursor"], ["codex", ".codex"]].map(async ([name, path]) => await exists(join(cwd, path!)) ? name! : null))).filter((x): x is string => Boolean(x));
   const commands: ToolCommand[] = [];
+  let testRunner: RepoProfile["testRunner"];
   if (packageManager) {
     try {
       const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as { scripts?: Record<string, string> };
       for (const name of ["typecheck", "lint", "test"] as const) if (pkg.scripts?.[name]) commands.push({ name, command: packageManager, args: packageManager === "npm" ? ["run", name] : [name] });
+      const test = pkg.scripts?.test ?? ""; testRunner = /\bvitest\b/.test(test) ? "vitest" : /\bjest\b/.test(test) ? "jest" : /node\s+.*--test|node\s+--test/.test(test) ? "node" : undefined;
       if (!pkg.scripts?.typecheck && pkg.scripts?.check) commands.unshift({ name: "check", command: packageManager, args: packageManager === "npm" ? ["run", "check"] : ["check"] });
     } catch { /* no manifest */ }
   }
@@ -33,11 +35,11 @@ export async function detectRepository(cwd: string): Promise<RepoProfile> {
     const pyproject = await readFile(join(cwd, "pyproject.toml"), "utf8");
     const python = packageManager === "uv" ? { command: "uv", prefix: ["run"] } : packageManager === "poetry" ? { command: "poetry", prefix: ["run"] } : { command: "python", prefix: ["-m"] };
     if (/\b(?:pyright|mypy)\b/.test(pyproject)) { const tool = /\bpyright\b/.test(pyproject) ? "pyright" : "mypy"; commands.push({ name: "typecheck", command: python.command, args: [...python.prefix, tool, "."] }); }
-    if (/\bpytest\b/.test(pyproject)) commands.push({ name: "test", command: python.command, args: [...python.prefix, "pytest"] });
+    if (/\bpytest\b/.test(pyproject)) { commands.push({ name: "test", command: python.command, args: [...python.prefix, "pytest"] }); testRunner = "pytest"; }
   }
   if (await exists(join(cwd, "go.mod"))) { languages.push("go"); commands.push({ name: "lint", command: "go", args: ["vet", "./..."] }, { name: "test", command: "go", args: ["test", "./..."] }); }
   if (await exists(join(cwd, "Gemfile"))) { languages.push("ruby"); commands.push({ name: "test", command: "bundle", args: ["exec", "rake", "test"] }); }
   if (await exists(join(cwd, "gradlew"))) { languages.push("java"); commands.push({ name: "test", command: join(cwd, "gradlew"), args: ["test"] }); }
   if ((await readdir(cwd)).some((name) => /\.(?:sln|csproj)$/.test(name))) { languages.push("dotnet"); commands.push({ name: "test", command: "dotnet", args: ["test"] }); }
-  return { packageManager, language: languages, commands, harnesses };
+  return { packageManager, language: languages, commands, harnesses, ...(testRunner ? { testRunner } : {}) };
 }
