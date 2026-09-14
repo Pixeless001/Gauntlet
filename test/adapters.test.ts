@@ -6,9 +6,10 @@ import { join } from "node:path";
 import { install, uninstall } from "../src/adapters/install.js";
 import { codexAdapter } from "../src/adapters/codex/index.js";
 
-test("adapter validates common events", () => {
-  const event = codexAdapter.translate({ version: 1, type: "task_start", taskId: "1", repository: "/repo", timestamp: new Date().toISOString(), intent: "fix" });
-  assert.equal(event.type, "task_start");
+test("adapter translates native events and rejects foreign events", () => {
+  const event = codexAdapter.translate({ hook_event_name: "UserPromptSubmit", session_id: "1", cwd: "/repo", prompt: "fix" });
+  assert.equal(event.type, "task_start"); assert.equal(event.repository, "/repo");
+  assert.throws(() => codexAdapter.translate({}, "sessionStart"), /Unsupported native hook event/);
 });
 
 test("installation is idempotent and reversible", async () => {

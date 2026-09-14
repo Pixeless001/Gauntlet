@@ -1,15 +1,10 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { HarnessName } from "../adapters/types.js";
+import { adapter } from "../adapters/install.js";
 import { GauntletEngine } from "../core/engine.js";
 import { formatSummary } from "../reporting/summary.js";
 
 type NativeEvent = Record<string, unknown>;
-
-function taskId(input: NativeEvent): string {
-  const candidate = input.session_id ?? input.conversation_id ?? process.env.GAUNTLET_TASK_ID ?? "session";
-  return `native-${createHash("sha256").update(String(candidate)).digest("hex").slice(0, 24)}`;
-}
 
 function eventName(input: NativeEvent): string { return String(input.hook_event_name ?? process.env.CURSOR_HOOK_EVENT ?? ""); }
 
@@ -37,22 +32,19 @@ function stopOutput(harness: HarnessName, input: NativeEvent, summary: string, a
 }
 
 export async function dispatchHook(harness: HarnessName, input: NativeEvent, nativeEvent?: string): Promise<NativeEvent> {
-  const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd(), engine = new GauntletEngine(cwd), id = taskId(input), name = nativeEvent ?? eventName(input);
-  const isStart = name === "UserPromptSubmit" || name === "beforeSubmitPrompt" || name === "sessionStart";
-  if (isStart) {
-    const intent = typeof input.prompt === "string" ? input.prompt : "Coding session";
-    const result = await engine.start(intent, id);
+  const name = nativeEvent ?? eventName(input), event = adapter(harness).translate(input, name), engine = new GauntletEngine(event.repository), id = event.taskId;
+  if (event.type === "task_start") {
+    const result = await engine.start(event.intent, id);
     return startOutput(harness, name, id, result.injection, result.clarification);
   }
-  if (name === "PostToolUse" || name === "postToolUse" || name === "PostToolUseFailure" || name === "postToolUseFailure") {
+  if (event.type === "task_activity") {
     if (!await existsTask(engine, id)) return {};
-    const failed = name.toLowerCase().includes("failure");
-    const activity = await engine.activity(id, { kind: "command", target: String(input.tool_name ?? input.command ?? "tool"), outcome: failed ? "fail" : "pass", outputBytes: JSON.stringify(input.tool_response ?? input.error_message ?? "").length });
+    const activity = await engine.activity(id, event.activity);
     const additional = activity.continuation ? JSON.stringify(activity.continuation) : undefined;
     if (!additional) return {};
     return harness === "cursor" ? { additional_context: additional } : { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: additional } };
   }
-  if (name === "Stop" || name === "stop") {
+  if (event.type === "before_stop") {
     if (!await existsTask(engine, id)) return {};
     const result = await engine.finish(id), summary = formatSummary(result, false), acceptable = result.clean && result.verified;
     if (!acceptable) await engine.retry(id);

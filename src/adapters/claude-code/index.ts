@@ -1,3 +1,4 @@
-import { translateEvent } from "../shared.js";
+import { translateNativeEvent } from "../shared.js";
 import type { HarnessAdapter } from "../types.js";
-export const claudeCodeAdapter: HarnessAdapter = { name: "claude-code", configurationPath: ".claude/settings.json", nativeEvents: ["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop"], translate: translateEvent };
+const nativeEvents = ["UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop"];
+export const claudeCodeAdapter: HarnessAdapter = { name: "claude-code", configurationPath: ".claude/settings.json", nativeEvents, translate: (input, name) => translateNativeEvent(input, nativeEvents, name) };

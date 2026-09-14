@@ -23,6 +23,16 @@ test("Cursor sessionStart returns environment and native context fields", async 
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("Cursor task id environment handoff remains stable", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-cursor-id-hook-"));
+  try {
+    const started = await dispatchHook("cursor", { session_id: "session", cwd }, "sessionStart"); const id = String((started.env as Record<string, unknown>).GAUNTLET_TASK_ID);
+    const previous = process.env.GAUNTLET_TASK_ID; process.env.GAUNTLET_TASK_ID = id;
+    try { const output = await dispatchHook("cursor", { cwd, tool_name: "Shell" }, "postToolUse"); assert.deepEqual(output, {}); } finally { if (previous === undefined) delete process.env.GAUNTLET_TASK_ID; else process.env.GAUNTLET_TASK_ID = previous; }
+    const state = JSON.parse(await readFile(join(cwd, `.gauntlet/tasks/${id}.json`), "utf8")); assert.equal(state.activities.length, 1);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("subsequent prompts preserve the task-start baseline", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-lifecycle-hook-"));
   try {
