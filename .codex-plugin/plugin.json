@@ -1,0 +1,18 @@
+{
+  "name": "gauntlet",
+  "version": "1.0.0",
+  "description": "Lightweight workflow control and verification for coding agents",
+  "author": {
+    "name": "Pixeless001"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Gauntlet",
+    "shortDescription": "Keep agent changes scoped, clean, and verified.",
+    "longDescription": "Gauntlet supplies compact repository context, detects workflow regressions, runs targeted local verification, and measures clean first-pass completion.",
+    "developerName": "Pixeless001",
+    "category": "Developer Tools",
+    "capabilities": ["hooks", "skills"],
+    "defaultPrompt": "Use Gauntlet to keep this coding task scoped and verify it before completion."
+  }
+}
