@@ -6,7 +6,7 @@ import { measure } from "../src/core/measure.js";
 import { loopFinding } from "../src/core/guard.js";
 import type { TaskState } from "../src/core/task-state.js";
 import { StateStore } from "../src/state/store.js";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -60,6 +60,15 @@ test("only blocking findings prevent a clean result", () => {
 test("state ids cannot escape the local state directory", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-"));
   try { await assert.rejects(new StateStore(cwd).loadTask("../../outside"), /Invalid task id/); } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("state loading rejects malformed and oversized records", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-")), store = new StateStore(cwd), tasks = join(cwd, ".gauntlet/tasks");
+  try {
+    await mkdir(tasks, { recursive: true }); await writeFile(join(tasks, "bad.json"), JSON.stringify({ version: 2, id: "bad" }));
+    await assert.rejects(store.loadTask("bad"), /Invalid Gauntlet task state/);
+    await writeFile(join(tasks, "large.json"), " ".repeat(256_001)); await assert.rejects(store.loadTask("large"), /exceeds 256KB/);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("concurrent state updates do not lose activities", async () => {

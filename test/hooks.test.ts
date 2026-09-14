@@ -54,6 +54,16 @@ test("dirty findings block stop and advance the attempt", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("Gauntlet permits at most one correction without trusting native counters", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-correction-hook-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.test.ts"), "test('x', () => 1);\n");
+    const identity = { hook_event_name: "UserPromptSubmit", session_id: "correction", cwd, prompt: "Change tests" }; await dispatchHook("claude-code", identity); await unlink(join(cwd, "task.test.ts"));
+    assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd })).decision, "block");
+    const second = await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd }); assert.equal(second.decision, undefined); assert.match(String(second.systemMessage), /CLEAN/);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 for (const fixture of [
   { harness: "codex" as const, start: "UserPromptSubmit", activity: "PostToolUse", stop: "Stop" },
   { harness: "claude-code" as const, start: "UserPromptSubmit", activity: "PostToolUseFailure", stop: "Stop" },

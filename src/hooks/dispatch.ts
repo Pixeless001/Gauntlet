@@ -25,8 +25,7 @@ function startOutput(harness: HarnessName, name: string, id: string, injection: 
   return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } };
 }
 
-function stopOutput(harness: HarnessName, input: NativeEvent, summary: string, acceptable: boolean): NativeEvent {
-  const alreadyContinued = input.stop_hook_active === true || Number(input.loop_count ?? 0) > 0;
+function stopOutput(harness: HarnessName, summary: string, acceptable: boolean, alreadyContinued: boolean): NativeEvent {
   if (!acceptable && !alreadyContinued) return harness === "cursor" ? { followup_message: `Gauntlet completion is not clean and verified. Address the findings or failing check, then finish again.\n\n${summary}` } : { decision: "block", reason: `Gauntlet completion is not clean and verified. Address the findings or failing check, then finish again.\n\n${summary}` };
   return harness === "cursor" ? {} : { systemMessage: summary };
 }
@@ -47,8 +46,9 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   if (event.type === "before_stop") {
     if (!await existsTask(engine, id)) return {};
     const result = await engine.finish(id), summary = formatSummary(result, false), acceptable = result.clean && result.verified;
-    if (!acceptable) await engine.retry(id);
-    return stopOutput(harness, input, summary, acceptable);
+    const alreadyContinued = result.attempts > 1;
+    if (!acceptable && !alreadyContinued) await engine.retry(id);
+    return stopOutput(harness, summary, acceptable, alreadyContinued);
   }
   return {};
 }
