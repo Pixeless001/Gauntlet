@@ -30,9 +30,9 @@ function startOutput(harness: HarnessName, name: string, id: string, injection: 
   return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: context } };
 }
 
-function stopOutput(harness: HarnessName, input: NativeEvent, summary: string, verified: boolean): NativeEvent {
+function stopOutput(harness: HarnessName, input: NativeEvent, summary: string, acceptable: boolean): NativeEvent {
   const alreadyContinued = input.stop_hook_active === true || Number(input.loop_count ?? 0) > 0;
-  if (!verified && !alreadyContinued) return harness === "cursor" ? { followup_message: `Gauntlet verification is incomplete. Address the failing targeted check, then finish again.\n\n${summary}` } : { decision: "block", reason: `Gauntlet verification is incomplete. Address the failing targeted check, then finish again.\n\n${summary}` };
+  if (!acceptable && !alreadyContinued) return harness === "cursor" ? { followup_message: `Gauntlet completion is not clean and verified. Address the findings or failing check, then finish again.\n\n${summary}` } : { decision: "block", reason: `Gauntlet completion is not clean and verified. Address the findings or failing check, then finish again.\n\n${summary}` };
   return harness === "cursor" ? {} : { systemMessage: summary };
 }
 
@@ -54,8 +54,9 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   }
   if (name === "Stop" || name === "stop") {
     if (!await existsTask(engine, id)) return {};
-    const result = await engine.finish(id), summary = formatSummary(result, false);
-    return stopOutput(harness, input, summary, result.verified);
+    const result = await engine.finish(id), summary = formatSummary(result, false), acceptable = result.clean && result.verified;
+    if (!acceptable) await engine.retry(id);
+    return stopOutput(harness, input, summary, acceptable);
   }
   return {};
 }

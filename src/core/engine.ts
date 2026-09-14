@@ -24,6 +24,14 @@ export class GauntletEngine {
   constructor(readonly cwd: string) { this.store = new StateStore(cwd); }
 
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
+    try {
+      const state = await this.store.loadTask(id);
+      const context = await createContextPacket(this.cwd, state.contract, state.conventions);
+      const ambiguity = detectAmbiguity(state.contract);
+      return { state, injection: `${STEERING_POLICY}\n\n${formatContext(context)}`, clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     const contract = extractContract(intent), baseline = await captureBaseline(this.cwd), profile = await detectRepository(this.cwd);
     const conventionProfile = await discoverConventions(this.cwd, contract.explicitPaths), conventions = selectConventionFacts(conventionProfile, contract);
     const context = await createContextPacket(this.cwd, contract, conventions);
@@ -43,10 +51,26 @@ export class GauntletEngine {
 
   async finish(id: string): Promise<TaskMeasurement> {
     const state = await this.store.loadTask(id), changes = await changedFiles(this.cwd, state.baseline);
-    state.findings.push(...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests), ...await inspectConventionDrift(this.cwd, state, changes));
+    const current = [...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests), ...await inspectConventionDrift(this.cwd, state, changes)];
+    state.findings = deduplicateFindings([...state.findings, ...current]);
+    if (state.conventionMetrics) {
+      state.conventionMetrics.dependencyConflicts = state.findings.filter((item) => item.code === "convention-dependency-conflict").length;
+      state.conventionMetrics.duplicates = state.findings.filter((item) => item.code === "convention-duplicate-primitive").length;
+      state.conventionMetrics.architectureBypasses = state.findings.filter((item) => item.code === "convention-architecture-bypass").length;
+      state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
+    }
     const results = await runVerification(this.cwd, selectVerification(await detectRepository(this.cwd), changes));
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;
   }
+
+  async retry(id: string): Promise<void> {
+    const state = await this.store.loadTask(id); state.attempts += 1; await this.store.saveTask(state);
+  }
+}
+
+function deduplicateFindings<T extends { code: string; evidence: string[] }>(findings: T[]): T[] {
+  const seen = new Set<string>();
+  return findings.filter((finding) => { const key = `${finding.code}:${finding.evidence.join(":")}`; if (seen.has(key)) return false; seen.add(key); return true; });
 }

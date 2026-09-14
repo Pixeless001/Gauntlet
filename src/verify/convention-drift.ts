@@ -25,12 +25,6 @@ export async function inspectConventionDrift(cwd: string, state: TaskState, chan
       try { const content = await readFile(join(cwd, change.path), "utf8"); if (/from\s+["'][^"']*(?:db|database|prisma|sequelize)[^"']*["']/.test(content) && strong.some((fact) => fact.id === "architecture.db-access")) findings.push({ code: "convention-architecture-bypass", severity: "warning", message: "A route imports database infrastructure directly despite the repository-layer convention.", evidence: [change.path] }); } catch { /* deleted file */ }
     }
   }
-  if (state.conventionMetrics) {
-    state.conventionMetrics.dependencyConflicts += findings.filter((item) => item.code === "convention-dependency-conflict").length;
-    state.conventionMetrics.duplicates += findings.filter((item) => item.code === "convention-duplicate-primitive").length;
-    state.conventionMetrics.architectureBypasses += findings.filter((item) => item.code === "convention-architecture-bypass").length;
-    state.conventionMetrics.interventions += findings.length;
-  }
   return deduplicate(findings);
 }
 

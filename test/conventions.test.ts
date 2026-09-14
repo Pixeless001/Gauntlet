@@ -44,6 +44,6 @@ test("reports a conflicting dependency from strong task-start evidence", async (
     const profile = await discoverConventions(cwd); await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { zod: "1", joi: "1" } }));
     const state = { version: 1, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: { intent: "validation", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, baseline: { head: null, status: [], dependencies: ["zod"], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: profile.facts, conventionMetrics: { hints: 1, primitives: 1, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1 } satisfies TaskState;
     const findings = await inspectConventionDrift(cwd, state, [{ path: "package.json", added: 1, removed: 1 }]);
-    assert.equal(findings[0]?.code, "convention-dependency-conflict"); assert.equal(state.conventionMetrics?.dependencyConflicts, 1);
+    assert.equal(findings[0]?.code, "convention-dependency-conflict");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
