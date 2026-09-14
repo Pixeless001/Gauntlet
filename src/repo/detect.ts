@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 async function exists(path: string) { try { await access(path); return true; } catch { return false; } }
@@ -25,6 +25,7 @@ export async function detectRepository(cwd: string): Promise<RepoProfile> {
     try {
       const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as { scripts?: Record<string, string> };
       for (const name of ["typecheck", "lint", "test"] as const) if (pkg.scripts?.[name]) commands.push({ name, command: packageManager, args: packageManager === "npm" ? ["run", name] : [name] });
+      if (!pkg.scripts?.typecheck && pkg.scripts?.check) commands.unshift({ name: "check", command: packageManager, args: packageManager === "npm" ? ["run", "check"] : ["check"] });
     } catch { /* no manifest */ }
   }
   if (languages.includes("rust")) commands.push({ name: "typecheck", command: "cargo", args: ["check"] }, { name: "lint", command: "cargo", args: ["clippy", "--", "-D", "warnings"] }, { name: "test", command: "cargo", args: ["test"] });
@@ -34,5 +35,9 @@ export async function detectRepository(cwd: string): Promise<RepoProfile> {
     if (/\b(?:pyright|mypy)\b/.test(pyproject)) { const tool = /\bpyright\b/.test(pyproject) ? "pyright" : "mypy"; commands.push({ name: "typecheck", command: python.command, args: [...python.prefix, tool, "."] }); }
     if (/\bpytest\b/.test(pyproject)) commands.push({ name: "test", command: python.command, args: [...python.prefix, "pytest"] });
   }
+  if (await exists(join(cwd, "go.mod"))) { languages.push("go"); commands.push({ name: "lint", command: "go", args: ["vet", "./..."] }, { name: "test", command: "go", args: ["test", "./..."] }); }
+  if (await exists(join(cwd, "Gemfile"))) { languages.push("ruby"); commands.push({ name: "test", command: "bundle", args: ["exec", "rake", "test"] }); }
+  if (await exists(join(cwd, "gradlew"))) { languages.push("java"); commands.push({ name: "test", command: join(cwd, "gradlew"), args: ["test"] }); }
+  if ((await readdir(cwd)).some((name) => /\.(?:sln|csproj)$/.test(name))) { languages.push("dotnet"); commands.push({ name: "test", command: "dotnet", args: ["test"] }); }
   return { packageManager, language: languages, commands, harnesses };
 }

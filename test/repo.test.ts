@@ -23,6 +23,12 @@ test("detects Rust's deterministic local checks", () => fixture(async (cwd) => {
   assert.equal(profile.packageManager, "cargo"); assert.deepEqual(profile.commands.map((item) => item.name), ["typecheck", "lint", "test"]);
 }));
 
+test("detects fallback and additional ecosystem checks", () => fixture(async (cwd) => {
+  await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { check: "tool check" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "go.mod"), "module fixture\n");
+  const profile = await detectRepository(cwd);
+  assert.deepEqual(profile.language, ["go"]); assert.deepEqual(profile.commands.map((item) => item.name), ["check", "lint", "test"]);
+}));
+
 test("includes untracked files in the implementation footprint", () => fixture(async (cwd) => {
   await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
   await writeFile(join(cwd, "base.txt"), "base\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd); const baseline = await captureBaseline(cwd);

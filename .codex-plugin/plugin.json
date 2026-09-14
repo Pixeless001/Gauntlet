@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Gauntlet",
     "shortDescription": "Keep agent changes scoped, clean, and verified.",
-    "longDescription": "Gauntlet supplies compact repository context, detects workflow regressions, runs targeted local verification, and measures clean first-pass completion.",
+    "longDescription": "Gauntlet supplies compact repository context, detects workflow regressions, runs declared local verification, and measures clean completion attempts.",
     "developerName": "Pixeless001",
     "category": "Developer Tools",
     "capabilities": ["hooks", "skills"],

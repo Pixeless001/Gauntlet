@@ -22,3 +22,12 @@ test("engine executes a task lifecycle against its task-start baseline", async (
     assert.equal(JSON.parse(await readFile(join(cwd, ".gauntlet", "last-result.json"), "utf8")).taskId, "task-1");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("repeated finish is idempotent", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-finish-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n");
+    const engine = new GauntletEngine(cwd); await engine.start("Change tests", "task"); await writeFile(join(cwd, "client.test.ts"), "");
+    const first = await engine.finish("task"), second = await engine.finish("task"); assert.deepEqual(second.findings, first.findings); assert.deepEqual(second.conventions, first.conventions);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

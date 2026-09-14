@@ -53,3 +53,16 @@ test("dirty findings block stop and advance the attempt", async () => {
     const state = JSON.parse(await readFile(join(cwd, ".gauntlet/tasks/native-3f3af1ecebbd1410ab417ec0.json"), "utf8")); assert.equal(state.attempts, 2);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+for (const fixture of [
+  { harness: "codex" as const, start: "UserPromptSubmit", activity: "PostToolUse", stop: "Stop" },
+  { harness: "claude-code" as const, start: "UserPromptSubmit", activity: "PostToolUseFailure", stop: "Stop" },
+  { harness: "cursor" as const, start: "sessionStart", activity: "postToolUseFailure", stop: "stop" },
+]) test(`${fixture.harness} executes its native lifecycle contract`, async () => {
+  const cwd = await mkdtemp(join(tmpdir(), `gauntlet-${fixture.harness}-contract-`));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
+    const identity = { session_id: "contract-session", cwd }; await dispatchHook(fixture.harness, { ...identity, prompt: "Maintain contract" }, fixture.start); await dispatchHook(fixture.harness, { ...identity, tool_name: "Shell", error_message: "failed" }, fixture.activity);
+    const output = await dispatchHook(fixture.harness, identity, fixture.stop); assert.ok(fixture.harness === "cursor" ? Object.keys(output).length === 0 : String(output.systemMessage).includes("VERIFIED"));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
