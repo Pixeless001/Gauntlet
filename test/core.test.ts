@@ -80,6 +80,15 @@ test("state loading rejects records copied from another repository", async () =>
   } finally { await rm(first, { recursive: true, force: true }); await rm(second, { recursive: true, force: true }); }
 });
 
+test("state loading fills newer bounded-session defaults", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-migration-")), store = new StateStore(cwd), value = state();
+  try {
+    value.repository = cwd; value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 0, compactions: 0, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 2, extraLlmCalls: 0 }, observations: [], repeatReadsDetected: 0 };
+    const legacy = value as unknown as { session: Record<string, unknown> }; delete legacy.session.observations; delete legacy.session.repeatReadsDetected; await mkdir(join(cwd, ".gauntlet/tasks"), { recursive: true }); await writeFile(join(cwd, ".gauntlet/tasks/task.json"), JSON.stringify(value));
+    assert.deepEqual((await store.loadTask("task")).session?.observations, []);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("concurrent state updates do not lose activities", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-")), store = new StateStore(cwd), value = state();
   try {

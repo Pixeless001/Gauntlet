@@ -49,7 +49,7 @@ export class GauntletEngine {
   async activity(id: string, activity: TaskActivity): Promise<ActivityResult> {
     const fingerprint = activity.kind === "file_read" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
     const state = await this.store.updateTask(id, (value) => {
-      value.activities.push(activity); const loop = loopFinding(value);
+      value.activities.push(activity); if (value.activities.length > 1_000) { value.activities.splice(0, value.activities.length - 1_000); if (value.session) value.session.lastCompactedActivity = Math.max(0, value.session.lastCompactedActivity - 1); } const loop = loopFinding(value);
       if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
       if (value.session && activity.kind === "file_read" && activity.target && fingerprint) {
         const existing = value.session.observations.find((item) => item.path === activity.target);
