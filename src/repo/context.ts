@@ -32,5 +32,5 @@ export async function selectContext(cwd: string, contract: TaskContract, limit =
 
 export function relatedTestCandidates(changed: string[], files: string[]): string[] {
   const stems = changed.map((file) => basename(file, extname(file)).replace(/\.(?:test|spec)$/, ""));
-  return files.filter((file) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(file) && stems.some((stem) => basename(file).startsWith(stem)));
+  return files.filter((file) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(file) && stems.includes(basename(file, extname(file)).replace(/\.(?:test|spec)$/, "")));
 }
