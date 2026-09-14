@@ -61,24 +61,29 @@ async function packageFacts(cwd: string, files: string[], budget: ConventionBudg
   try {
     const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; scripts?: Record<string, string>; type?: string };
     const dependencies = { ...pkg.dependencies, ...pkg.devDependencies }, src = [await source(cwd, "package.json")], facts: ConventionFact[] = [];
-    let bytes = 0;
-    for (const [name, [capability, imports]] of Object.entries(dependencyCapabilities)) if (name in dependencies) {
-      const representatives: string[] = [];
-      for (const path of files.filter((file) => /\.[cm]?[jt]sx?$/.test(file)).slice(0, budget.maxFiles)) {
-        if (bytes >= budget.maxBytes || representatives.length >= 4) break;
-        try {
-          const content = await readFile(join(cwd, path), "utf8"); bytes += Buffer.byteLength(content);
-          if (imports.some((module) => new RegExp(`(?:from\\s+|require\\(\\s*)["']${module.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[/'"]|$)`).test(content))) representatives.push(path);
-        } catch { /* unreadable candidate */ }
-      }
-      const tooling = capability === "test-runner";
-      facts.push({ id: tooling ? "tool.test-runner" : `primitive.${capability}`, category: tooling ? "tooling" : "primitive", value: name, strength: tooling || representatives.length >= 2 ? "strong" : "medium", scope: ".", sources: [...src, ...await Promise.all(representatives.map((path) => source(cwd, path)))].slice(0, 6), representatives });
+    const installed = Object.entries(dependencyCapabilities).filter(([name]) => name in dependencies), usage = new Map(installed.map(([name]) => [name, [] as string[]])); let bytes = 0;
+    for (const path of files.filter((file) => /\.[cm]?[jt]sx?$/.test(file)).slice(0, budget.maxFiles)) {
+      try {
+        const size = (await stat(join(cwd, path))).size; if (size > budget.maxBytes - bytes) break;
+        const content = await readFile(join(cwd, path), "utf8"); bytes += size;
+        for (const [name, [, imports]] of installed) if (usage.get(name)!.length < 4 && imports.some((module) => importsModule(content, module))) usage.get(name)!.push(path);
+      } catch { /* unreadable candidate */ }
+    }
+    for (const [name, [capability]] of installed) {
+      const representatives = usage.get(name)!, tooling = capability === "test-runner";
+      const declaredRunner = tooling && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(pkg.scripts?.test ?? "");
+      facts.push({ id: tooling ? "tool.test-runner" : `primitive.${capability}`, category: tooling ? "tooling" : "primitive", value: name, strength: declaredRunner || representatives.length >= 2 ? "strong" : "medium", scope: ".", sources: [...src, ...await Promise.all(representatives.map((path) => source(cwd, path)))].slice(0, 6), representatives });
     }
     if (pkg.scripts?.lint) facts.push({ id: "tool.linter", category: "tooling", value: pkg.scripts.lint, strength: "strong", scope: ".", sources: src, representatives: [] });
     if (pkg.scripts?.format) facts.push({ id: "tool.formatter", category: "tooling", value: pkg.scripts.format, strength: "strong", scope: ".", sources: src, representatives: [] });
     if (pkg.type === "module") facts.push({ id: "api.module", category: "api", value: "esm", strength: "strong", scope: ".", sources: src, representatives: [] });
     return facts;
   } catch { return []; }
+}
+
+function importsModule(content: string, module: string): boolean {
+  const escaped = module.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:from\\s+|require\\(\\s*)["']${escaped}(?:[/'"]|$)`).test(content);
 }
 
 async function configFacts(cwd: string): Promise<ConventionFact[]> {

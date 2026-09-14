@@ -40,6 +40,16 @@ test("keeps dependency-only and competing conventions conservative", async () =>
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("collects usage for competing dependencies in one bounded pass", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-conventions-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { zod: "1", joi: "1" } })); await mkdir(join(cwd, "src"));
+    await writeFile(join(cwd, "src/a.ts"), "import { z } from 'zod'; import Joi from 'joi'"); await writeFile(join(cwd, "src/b.ts"), "const z = require('zod'); const Joi = require('joi')");
+    const validation = (await discoverConventions(cwd)).facts.filter((fact) => fact.id === "primitive.validation");
+    assert.equal(validation.length, 2); assert.ok(validation.every((fact) => fact.strength === "strong" && fact.representatives.length === 2));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("invalidates only facts backed by a changed source", async () => {
   const cwd = await fixture();
   try {
