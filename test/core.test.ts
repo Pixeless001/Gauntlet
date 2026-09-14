@@ -3,6 +3,7 @@ import test from "node:test";
 import { extractContract, detectAmbiguity } from "../src/core/intent.js";
 import { compact, shouldCompact } from "../src/core/compact.js";
 import { measure } from "../src/core/measure.js";
+import { loopFinding } from "../src/core/guard.js";
 import type { TaskState } from "../src/core/task-state.js";
 import { StateStore } from "../src/state/store.js";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -28,6 +29,14 @@ test("compaction preserves contract and unresolved findings", () => {
   value.findings.push({ code: "failure", severity: "warning", message: "Boundary unresolved", evidence: [] });
   assert.deepEqual(shouldCompact(value).reasons, ["multiple failed attempts"]);
   assert.deepEqual(compact(value), { task: "Fix race", acceptanceCriteria: ["No duplicate refresh"], constraints: ["Preserve API"], repoConstraints: [], workingSet: ["src/session.ts"], unresolved: ["Boundary unresolved"], failedApproaches: ["npm test"] });
+});
+
+test("repeated file reads compact while distinct command failures do not form a loop", () => {
+  const value = state();
+  value.activities.push(...Array.from({ length: 7 }, () => ({ kind: "file_read" as const, target: "src/session.ts", outcome: "pass" as const, outputBytes: 1 })));
+  value.activities.push({ kind: "command", target: "npm test -- auth", outcome: "fail", outputBytes: 1 }, { kind: "command", target: "npm test -- billing", outcome: "fail", outputBytes: 1 }, { kind: "command", target: "npm test -- user", outcome: "fail", outputBytes: 1 });
+  assert.ok(shouldCompact(value).reasons.includes("repeated file reads"));
+  assert.equal(loopFinding(value), null);
 });
 
 test("measurement does not equate absent tests with verification", () => {
