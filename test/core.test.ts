@@ -42,7 +42,7 @@ test("repeated file reads compact while distinct command failures do not form a 
 test("compaction respects its watermark and intervention budget", () => {
   const value = state();
   value.activities = Array.from({ length: 7 }, () => ({ kind: "file_read" as const, target: "same.ts", outcome: "pass" as const, outputBytes: 0 }));
-  value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 7, compactions: 1, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 2, extraLlmCalls: 0 } };
+  value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 7, compactions: 1, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 2, extraLlmCalls: 0 }, observations: [], repeatReadsDetected: 0 };
   assert.equal(shouldCompact(value).compact, false);
 });
 

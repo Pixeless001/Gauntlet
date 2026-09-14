@@ -40,3 +40,13 @@ test("resolved finish findings do not poison later attempts", async () => {
     await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n"); assert.equal((await engine.finish("task")).clean, true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("engine tracks repeated unchanged reads and invalidates on writes", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-observations-"));
+  try {
+    await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "observations");
+    await engine.activity("observations", { kind: "file_read", target: "source.ts", outcome: "pass", outputBytes: 10 }); await engine.activity("observations", { kind: "file_read", target: "source.ts", outcome: "pass", outputBytes: 10 });
+    let state = (await engine.activity("observations", { kind: "message", outputBytes: 0 })).state; assert.equal(state.session?.repeatReadsDetected, 1); assert.equal(state.session?.observations.length, 1);
+    state = (await engine.activity("observations", { kind: "file_write", target: "source.ts", outcome: "pass", outputBytes: 0 })).state; assert.equal(state.session?.observations.length, 0);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

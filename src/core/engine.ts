@@ -19,6 +19,7 @@ import { inspectConventionDrift } from "../verify/convention-drift.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
 import { assessRisk } from "./risk.js";
 import { routeSkills } from "./skills.js";
+import { fingerprintFiles } from "../repo/index.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -40,15 +41,22 @@ export class GauntletEngine {
     const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
     const risk = assessRisk(contract);
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET } } };
+    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0 } };
     await this.store.saveTask(state);
     return { state, injection: `${STEERING_POLICY}\n\n${formatContext(context)}`, clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
 
   async activity(id: string, activity: TaskActivity): Promise<ActivityResult> {
+    const fingerprint = activity.kind === "file_read" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
     const state = await this.store.updateTask(id, (value) => {
       value.activities.push(activity); const loop = loopFinding(value);
       if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
+      if (value.session && activity.kind === "file_read" && activity.target && fingerprint) {
+        const existing = value.session.observations.find((item) => item.path === activity.target);
+        if (existing?.hash === fingerprint.hash) value.session.repeatReadsDetected += 1;
+        value.session.observations = [{ path: activity.target, hash: fingerprint.hash, lastObserved: value.activities.length, relevantSymbols: [] }, ...value.session.observations.filter((item) => item.path !== activity.target)].slice(0, 64);
+      }
+      if (value.session && activity.kind === "file_write" && activity.target) value.session.observations = value.session.observations.filter((item) => item.path !== activity.target);
     });
     const decision = shouldCompact(state), continuation = decision.compact ? compact(state) : null;
     if (continuation) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });

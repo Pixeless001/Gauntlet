@@ -8,6 +8,7 @@ import type { SkillName } from "./skills.js";
 export interface FileDelta { path: string; added: number; removed: number }
 export interface TestSignature { assertions: string[]; skipped: number }
 export interface FileFingerprint { hash: string; lineHashes: string[] }
+export interface FileObservation { path: string; hash: string; lastObserved: number; relevantSymbols: string[] }
 export interface Baseline {
   head: string | null;
   status: string[];
@@ -41,5 +42,7 @@ export interface TaskState {
     lastCompactedActivity: number;
     compactions: number;
     budget: InterventionBudget;
+    observations: FileObservation[];
+    repeatReadsDetected: number;
   };
 }
