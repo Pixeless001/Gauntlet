@@ -3,6 +3,7 @@ import type { Baseline, FileDelta } from "../core/task-state.js";
 import { detectDependencies } from "./detect.js";
 import { captureTestSignatures } from "./tests.js";
 import { createRepoIndex, fingerprintFiles, parseStatus } from "./index.js";
+import { walk } from "./tests.js";
 
 async function git(cwd: string, args: string[]) { return run("git", args, cwd, 15_000); }
 
@@ -23,19 +24,18 @@ export async function changedFiles(cwd: string, baseline?: Baseline): Promise<Fi
   }
   if (baseline.index?.mode === "git" && baseline.head) {
     const [status, diff] = await Promise.all([git(cwd, ["status", "--porcelain=v1", "-z"]), git(cwd, ["diff", "--numstat", baseline.head])]);
-    const currentPaths = parseStatus(status.stdout), ambiguous = new Set(Object.keys(baseline.files));
+    const currentPaths = parseStatus(status.stdout), ambiguous = new Set(Object.keys(baseline.files)), inspected = [...new Set([...currentPaths, ...ambiguous])];
     const deltas = new Map(diff.stdout.trim().split("\n").filter(Boolean).map((line) => { const value = parseNumstat(line); return [value.path, value]; }));
-    const current = await fingerprintFiles(cwd, currentPaths);
-    for (const path of currentPaths) {
+    const current = await fingerprintFiles(cwd, inspected);
+    for (const path of inspected) {
       if (ambiguous.has(path)) {
         if (baseline.files[path]?.hash !== current[path]?.hash) deltas.set(path, lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
         else deltas.delete(path);
       } else if (!deltas.has(path)) deltas.set(path, lineDelta(path, [], current[path]?.lineHashes ?? []));
     }
-    for (const path of ambiguous) if (!currentPaths.includes(path)) deltas.delete(path);
     return [...deltas.values()].sort((a, b) => a.path.localeCompare(b.path));
   }
-  const paths = baseline.index?.files ?? Object.keys(baseline.files), current = await fingerprintFiles(cwd, paths);
+  const currentPaths = await walk(cwd), paths = [...new Set([...baseline.index?.files ?? Object.keys(baseline.files), ...currentPaths])], current = await fingerprintFiles(cwd, currentPaths);
   return [...new Set([...Object.keys(baseline.files), ...Object.keys(current)])].filter((path) => baseline.files[path]?.hash !== current[path]?.hash).sort().map((path) => lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
 }
 

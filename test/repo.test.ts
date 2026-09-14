@@ -54,6 +54,19 @@ test("indexes tracked and untracked files once with classified metadata", () => 
   assert.equal(index.mode, "git"); assert.deepEqual(index.tests, ["src/client.test.ts"]); assert.ok(index.configs.includes("package.json")); assert.ok(index.dirty.includes("src/new.ts"));
 }));
 
+test("fingerprints only ambiguous dirty files in a Git baseline", () => fixture(async (cwd) => {
+  await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+  await Promise.all(Array.from({ length: 200 }, (_, index) => writeFile(join(cwd, `file-${index}.ts`), "clean\n"))); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+  const clean = await captureBaseline(cwd); assert.deepEqual(clean.files, {});
+  await writeFile(join(cwd, "file-1.ts"), "dirty\n"); const dirty = await captureBaseline(cwd); assert.deepEqual(Object.keys(dirty.files), ["file-1.ts"]);
+  await writeFile(join(cwd, "file-1.ts"), "clean\n"); assert.deepEqual((await changedFiles(cwd, dirty)).map((item) => item.path), ["file-1.ts"]);
+}));
+
+test("filesystem fallback detects files added after the baseline", () => fixture(async (cwd) => {
+  await writeFile(join(cwd, "before.ts"), "before\n"); const baseline = await captureBaseline(cwd); await writeFile(join(cwd, "after.ts"), "after\n");
+  assert.equal(baseline.index?.mode, "filesystem"); assert.deepEqual((await changedFiles(cwd, baseline)).map((item) => item.path), ["after.ts"]);
+}));
+
 test("ranks explicit paths and bounds context", () => fixture(async (cwd) => {
   await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src", "retry.ts"), ""); await writeFile(join(cwd, "src", "other.ts"), "");
   const packet = await selectContext(cwd, { intent: "Fix src/retry.ts", explicitPaths: ["src/retry.ts"], acceptanceCriteria: [], constraints: [] }, 1);
