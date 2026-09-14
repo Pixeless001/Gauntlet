@@ -4,6 +4,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { z } from "zod";
 import type { TaskContract } from "../core/events.js";
 import { walk } from "./tests.js";
+import type { RepoIndex } from "./index.js";
 
 export const conventionStrength = z.enum(["strong", "medium", "weak"]);
 const sourceSchema = z.object({ path: z.string().max(500), fingerprint: z.string().length(64) });
@@ -82,8 +83,8 @@ async function configFacts(cwd: string): Promise<ConventionFact[]> {
 const primitivePattern = /(?:^|\/)(?:lib|utils?|shared|common|infrastructure)\/.*(?:retry|http|client|logger|logging|errors?|validation|schema|pagination|config|serializ|cache|auth|database|db)/i;
 const capabilityForPath = (path: string) => ["retry", "http", "logging", "error", "validation", "pagination", "config", "serialization", "cache", "auth", "database"].find((word) => path.toLowerCase().includes(word))?.replace("error", "errors").replace("database", "db") ?? null;
 
-export async function discoverConventions(cwd: string, touched: string[] = [], budget = DEFAULT_CONVENTION_BUDGET): Promise<RepoConventionProfile> {
-  const cache = new ConventionCache(cwd), cached = await cache.load(), all = (await walk(cwd)).slice(0, budget.maxFiles);
+export async function discoverConventions(cwd: string, touched: string[] = [], budget = DEFAULT_CONVENTION_BUDGET, index?: RepoIndex): Promise<RepoConventionProfile> {
+  const cache = new ConventionCache(cwd), cached = await cache.load(), all = (index?.files ?? await walk(cwd)).slice(0, budget.maxFiles);
   const candidates = [...new Set([...touched, ...all.filter((path) => primitivePattern.test(path)).slice(0, budget.maxSearchResults)])];
   const discovered = [...await packageFacts(cwd), ...await configFacts(cwd)];
   for (const path of candidates) {

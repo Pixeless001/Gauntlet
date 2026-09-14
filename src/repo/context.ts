@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
+import type { RepoIndex } from "./index.js";
 import { walk } from "./tests.js";
 import type { TaskContract } from "../core/events.js";
 import type { ConventionFact } from "./conventions.js";
@@ -7,8 +8,8 @@ import type { ConventionFact } from "./conventions.js";
 export interface ContextEntry { path: string; reason: string; score: number }
 export interface ContextPacket { entries: ContextEntry[]; instructions: string[]; conventions: ConventionFact[]; excluded: number }
 
-export async function selectContext(cwd: string, contract: TaskContract, limit = 12, conventions: ConventionFact[] = []): Promise<ContextPacket> {
-  const files = await walk(cwd);
+export async function selectContext(cwd: string, contract: TaskContract, limit = 12, conventions: ConventionFact[] = [], index?: RepoIndex): Promise<ContextPacket> {
+  const files = index?.files ?? await walk(cwd);
   const terms = contract.intent.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g)?.filter((term) => !["the", "and", "with", "from", "this", "that", "add", "fix"].includes(term)) ?? [];
   const scored = files.map((path): ContextEntry => {
     const lower = path.toLowerCase(); let score = contract.explicitPaths.some((item) => lower.includes(item.replaceAll("*", "").toLowerCase())) ? 20 : 0;

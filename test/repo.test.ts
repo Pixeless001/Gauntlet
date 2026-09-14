@@ -7,6 +7,7 @@ import { detectRepository } from "../src/repo/detect.js";
 import { selectContext } from "../src/repo/context.js";
 import { formatContext } from "../src/core/context.js";
 import { captureBaseline, changedFiles } from "../src/repo/git.js";
+import { createRepoIndex } from "../src/repo/index.js";
 import { run } from "../src/repo/process.js";
 
 async function fixture(run: (cwd: string) => Promise<void>) { const cwd = await mkdtemp(join(tmpdir(), "gauntlet-")); try { await run(cwd); } finally { await rm(cwd, { recursive: true, force: true }); } }
@@ -43,6 +44,14 @@ test("does not attribute pre-existing dirty files to a task", () => fixture(asyn
   assert.deepEqual(await changedFiles(cwd, baseline), []);
   await writeFile(join(cwd, "existing.ts"), "changed during task\n");
   assert.deepEqual((await changedFiles(cwd, baseline)).map((file) => file.path), ["existing.ts"]);
+}));
+
+test("indexes tracked and untracked files once with classified metadata", () => fixture(async (cwd) => {
+  await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+  await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src/client.test.ts"), ""); await writeFile(join(cwd, "package.json"), "{}"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+  await writeFile(join(cwd, "src/new.ts"), "new\n");
+  const index = await createRepoIndex(cwd);
+  assert.equal(index.mode, "git"); assert.deepEqual(index.tests, ["src/client.test.ts"]); assert.ok(index.configs.includes("package.json")); assert.ok(index.dirty.includes("src/new.ts"));
 }));
 
 test("ranks explicit paths and bounds context", () => fixture(async (cwd) => {

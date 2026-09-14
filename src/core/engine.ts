@@ -26,15 +26,15 @@ export class GauntletEngine {
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
     try {
       const state = await this.store.loadTask(id);
-      const context = await createContextPacket(this.cwd, state.contract, state.conventions);
+      const context = await createContextPacket(this.cwd, state.contract, state.conventions, state.baseline.index);
       const ambiguity = detectAmbiguity(state.contract);
       return { state, injection: `${STEERING_POLICY}\n\n${formatContext(context)}`, clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     const contract = extractContract(intent), baseline = await captureBaseline(this.cwd), profile = await detectRepository(this.cwd);
-    const conventionProfile = await discoverConventions(this.cwd, contract.explicitPaths), conventions = selectConventionFacts(conventionProfile, contract);
-    const context = await createContextPacket(this.cwd, contract, conventions);
+    const conventionProfile = await discoverConventions(this.cwd, contract.explicitPaths, undefined, baseline.index), conventions = selectConventionFacts(conventionProfile, contract);
+    const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
     const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1 };
     await this.store.saveTask(state);

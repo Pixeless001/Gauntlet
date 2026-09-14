@@ -1,31 +1,15 @@
 import { run } from "./process.js";
 import type { Baseline, FileDelta } from "../core/task-state.js";
 import { detectDependencies } from "./detect.js";
-import { captureTestSignatures, walk } from "./tests.js";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { captureTestSignatures } from "./tests.js";
+import { createRepoIndex, fingerprintFiles, parseStatus } from "./index.js";
 
 async function git(cwd: string, args: string[]) { return run("git", args, cwd, 15_000); }
 
 export async function captureBaseline(cwd: string): Promise<Baseline> {
-  const paths = await walk(cwd);
-  const [head, status, dependencies, files, tests] = await Promise.all([
-    git(cwd, ["rev-parse", "HEAD"]), git(cwd, ["status", "--porcelain"]), detectDependencies(cwd), fingerprintFiles(cwd, paths), captureTestSignatures(cwd, paths),
-  ]);
-  return { head: head.exitCode === 0 ? head.stdout.trim() : null, status: status.stdout.trim().split("\n").filter(Boolean), dependencies, files, tests };
-}
-
-async function fingerprintFiles(cwd: string, paths: string[]) {
-  const result: Baseline["files"] = {};
-  await Promise.all(paths.map(async (path) => {
-    try {
-      const content = await readFile(join(cwd, path));
-      const lines = content.byteLength <= 2_000_000 && !content.includes(0) ? content.toString("utf8").split("\n") : [];
-      result[path] = { hash: createHash("sha256").update(content).digest("hex"), lineHashes: lines.map((line) => createHash("sha256").update(line).digest("base64url").slice(0, 12)) };
-    } catch { /* file vanished */ }
-  }));
-  return result;
+  const index = await createRepoIndex(cwd);
+  const [dependencies, tests] = await Promise.all([detectDependencies(cwd), captureTestSignatures(cwd, index.tests)]);
+  return { head: index.head, status: index.dirty, dependencies, files: index.fingerprints, tests, index };
 }
 
 export async function changedFiles(cwd: string, baseline?: Baseline): Promise<FileDelta[]> {
@@ -37,7 +21,21 @@ export async function changedFiles(cwd: string, baseline?: Baseline): Promise<Fi
     }
     return files;
   }
-  const current = await fingerprintFiles(cwd, await walk(cwd));
+  if (baseline.index?.mode === "git" && baseline.head) {
+    const [status, diff] = await Promise.all([git(cwd, ["status", "--porcelain=v1", "-z"]), git(cwd, ["diff", "--numstat", baseline.head])]);
+    const currentPaths = parseStatus(status.stdout), ambiguous = new Set(Object.keys(baseline.files));
+    const deltas = new Map(diff.stdout.trim().split("\n").filter(Boolean).map((line) => { const value = parseNumstat(line); return [value.path, value]; }));
+    const current = await fingerprintFiles(cwd, currentPaths);
+    for (const path of currentPaths) {
+      if (ambiguous.has(path)) {
+        if (baseline.files[path]?.hash !== current[path]?.hash) deltas.set(path, lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
+        else deltas.delete(path);
+      } else if (!deltas.has(path)) deltas.set(path, lineDelta(path, [], current[path]?.lineHashes ?? []));
+    }
+    for (const path of ambiguous) if (!currentPaths.includes(path)) deltas.delete(path);
+    return [...deltas.values()].sort((a, b) => a.path.localeCompare(b.path));
+  }
+  const paths = baseline.index?.files ?? Object.keys(baseline.files), current = await fingerprintFiles(cwd, paths);
   return [...new Set([...Object.keys(baseline.files), ...Object.keys(current)])].filter((path) => baseline.files[path]?.hash !== current[path]?.hash).sort().map((path) => lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
 }
 
