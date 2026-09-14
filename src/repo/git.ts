@@ -5,7 +5,7 @@ import { captureTestSignatures } from "./tests.js";
 import { createRepoIndex, fingerprintFiles, parseStatus } from "./index.js";
 import { walk } from "./tests.js";
 
-async function git(cwd: string, args: string[]) { return run("git", args, cwd, 15_000); }
+async function git(cwd: string, args: string[]) { return run("git", args, cwd, 15_000, 8_000_000); }
 
 export async function captureBaseline(cwd: string): Promise<Baseline> {
   const index = await createRepoIndex(cwd);

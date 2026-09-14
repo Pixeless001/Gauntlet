@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize } from "node:path";
 
 export interface FileRelationship { path: string; reason: string; score: number }
@@ -8,8 +8,7 @@ export async function findRelationships(cwd: string, targets: string[], files: s
   const candidates = [...new Set([...targets, ...files.filter((path) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(path)), ...files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, maxFiles)])].slice(0, maxFiles);
   for (const path of candidates) {
     if (bytes >= maxBytes) break;
-    let content: string; try { content = await readFile(join(cwd, path), "utf8"); } catch { continue; }
-    bytes += Buffer.byteLength(content); if (bytes > maxBytes) break;
+    let content: string; try { const size = (await stat(join(cwd, path))).size; if (size > maxBytes - bytes) continue; content = await readFile(join(cwd, path), "utf8"); bytes += size; } catch { continue; }
     if (targets.includes(path)) {
       for (const specifier of imports(content)) {
         const resolved = resolveImport(path, specifier, known);

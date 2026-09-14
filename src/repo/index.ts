@@ -17,19 +17,21 @@ export interface RepoIndex {
 
 const testPattern = /(?:test|spec)\.[cm]?[jt]sx?$/;
 const configs = new Set(["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json", "pyproject.toml", "Cargo.toml", "Cargo.lock", "go.mod", "Gemfile"]);
-const git = (cwd: string, args: string[]) => run("git", args, cwd, 15_000);
+const git = (cwd: string, args: string[]) => run("git", args, cwd, 15_000, 8_000_000);
 const fields = (value: string) => value.split("\0").filter(Boolean);
 const external = (path: string) => path !== ".gauntlet" && !path.startsWith(".gauntlet/");
 
 export async function fingerprintFiles(cwd: string, paths: string[]): Promise<Record<string, FileFingerprint>> {
   const result: Record<string, FileFingerprint> = {};
-  await Promise.all(paths.map(async (path) => {
-    try {
-      const content = await readFile(join(cwd, path));
-      const lines = content.byteLength <= 2_000_000 && !content.includes(0) ? content.toString("utf8").split("\n") : [];
-      result[path] = { hash: createHash("sha256").update(content).digest("hex"), lineHashes: lines.map((line) => createHash("sha256").update(line).digest("base64url").slice(0, 12)) };
-    } catch { /* file vanished */ }
-  }));
+  for (let offset = 0; offset < paths.length; offset += 32) {
+    await Promise.all(paths.slice(offset, offset + 32).map(async (path) => {
+      try {
+        const content = await readFile(join(cwd, path));
+        const lines = content.byteLength <= 2_000_000 && !content.includes(0) ? content.toString("utf8").split("\n") : [];
+        result[path] = { hash: createHash("sha256").update(content).digest("hex"), lineHashes: lines.map((line) => createHash("sha256").update(line).digest("base64url").slice(0, 12)) };
+      } catch { /* file vanished */ }
+    }));
+  }
   return result;
 }
 
@@ -52,7 +54,7 @@ export async function createRepoIndex(cwd: string): Promise<RepoIndex> {
       git(cwd, ["ls-files", "--others", "--exclude-standard", "-z"]),
       git(cwd, ["status", "--porcelain=v1", "-z"]),
     ]);
-    const files = [...new Set([...fields(tracked.stdout), ...fields(untracked.stdout)])].filter(external).sort();
+    const files = [...new Set([...fields(tracked.stdout), ...fields(untracked.stdout)])].filter(external).sort().slice(0, 10_000);
     const dirty = parseStatus(status.stdout);
     return classify({ mode: "git", head: head.stdout.trim(), files, dirty, fingerprints: await fingerprintFiles(cwd, dirty) });
   }
