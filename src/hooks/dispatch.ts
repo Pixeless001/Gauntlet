@@ -3,6 +3,7 @@ import type { HarnessName } from "../adapters/types.js";
 import { adapter } from "../adapters/install.js";
 import { GauntletEngine } from "../core/engine.js";
 import { formatSummary } from "../reporting/summary.js";
+import { correctionPacket } from "../verify/correction.js";
 
 type NativeEvent = Record<string, unknown>;
 
@@ -45,7 +46,7 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   }
   if (event.type === "before_stop") {
     if (!await existsTask(engine, id)) return {};
-    const result = await engine.finish(id), summary = formatSummary(result, false), acceptable = result.clean && result.verified;
+    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.clean && result.verified;
     const alreadyContinued = result.attempts > 1;
     if (!acceptable && !alreadyContinued) await engine.retry(id);
     return stopOutput(harness, summary, acceptable, alreadyContinued);

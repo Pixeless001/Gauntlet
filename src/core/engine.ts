@@ -25,7 +25,7 @@ import { LocalExecutionEnvironment } from "../execution/local.js";
 import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/counterfactual.js";
 import { initialUncertainty } from "../control/uncertainty.js";
 import { selectInterventions } from "../control/selector.js";
-import { observeExecution } from "../execution-state/runtime.js";
+import { observeExecution, recordVerification } from "../execution-state/runtime.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
@@ -34,6 +34,7 @@ export interface EngineOptions { preChangeEnvironment?: (head: string, candidate
 export class GauntletEngine {
   private readonly store: StateStore;
   constructor(readonly cwd: string, private readonly options: EngineOptions = {}) { this.store = new StateStore(cwd); }
+  async state(id: string): Promise<TaskState> { return this.store.loadTask(id); }
 
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
     try {
@@ -108,6 +109,8 @@ export class GauntletEngine {
       const candidateTests = changes.filter((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path)).map((change) => change.path), before = await this.options.preChangeEnvironment(state.baseline.head, candidateTests), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
       if (counterfactual.status === "weak") state.findings.push({ code: "weak-counterfactual", severity: "warning", blocking: true, message: "The new behavioral check also passes against pre-change behavior.", evidence: counterfactual.evidence });
     }
+    if (state.session?.uncertainty && !state.findings.some((item) => item.code.startsWith("convention-"))) state.session.uncertainty.repoFit = state.session.uncertainty.repoFit === "irrelevant" ? "irrelevant" : "resolved";
+    recordVerification(state, results.length > 0 && results.every((result) => result.status === "pass") && state.findings.every((finding) => !finding.blocking), results.map((result) => result.evidence).filter((item): item is string => Boolean(item)));
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;

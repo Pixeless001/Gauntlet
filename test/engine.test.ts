@@ -90,3 +90,7 @@ test("elevated new tests reject weak counterfactual evidence when a provider is 
     assert.deepEqual(candidateTests, ["auth.test.ts"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("successful completion records a validated verification checkpoint", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-verification-state-")); try { await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.ts", "verified"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("verified"); const resumed = await engine.start("", "verified"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.kind, "verification"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.status, "validated"); assert.equal(resumed.state.session?.uncertainty?.scope, "resolved"); } finally { await rm(cwd, { recursive: true, force: true }); }
+});

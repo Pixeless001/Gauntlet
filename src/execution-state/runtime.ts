@@ -24,6 +24,16 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { re
   return { repeatedFailure, causeValidated };
 }
 
+export function recordVerification(state: TaskState, passed: boolean, evidenceRefs: string[]): void {
+  const session = state.session, execution = session?.execution; if (!session || !execution) return;
+  const status = passed ? "validated" : "rejected", summary = passed ? "Required machine evidence passed" : "Required machine evidence failed";
+  const current = active(execution.checkpoints, execution.activeCheckpointId), parentId = current?.kind === "verification" ? current.parentId : execution.activeCheckpointId;
+  const existing = current?.kind === "verification" ? current : execution.checkpoints.find((item) => item.kind === "verification" && item.parentId === parentId && item.status === status);
+  if (existing) { existing.status = status; existing.summary = summary; existing.evidenceRefs = [...new Set(evidenceRefs)]; if (passed) execution.activeCheckpointId = existing.id; else if (existing.parentId) execution.activeCheckpointId = existing.parentId; }
+  else { const next = checkpoint("verification", summary, parentId ?? execution.activeCheckpointId, execution.nextEvent); next.status = status; next.evidenceRefs = [...new Set(evidenceRefs)]; execution.checkpoints.push(next); if (passed) execution.activeCheckpointId = next.id; }
+  if (passed && session.uncertainty) { session.uncertainty.behavior = session.uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved"; session.uncertainty.regression = session.uncertainty.regression === "irrelevant" ? "irrelevant" : "resolved"; session.uncertainty.scope = "resolved"; }
+}
+
 function checkpoint(kind: ExecutionCheckpoint["kind"], summary: string, parentId: string, event: number): ExecutionCheckpoint { return { id: randomUUID(), parentId, kind, status: "active", summary, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: event, resolves: [] }; }
 function active(checkpoints: ExecutionCheckpoint[], id: string): ExecutionCheckpoint | undefined { return checkpoints.find((item) => item.id === id); }
 function activate(execution: NonNullable<NonNullable<TaskState["session"]>["execution"]>, next: ExecutionCheckpoint): void { const current = active(execution.checkpoints, execution.activeCheckpointId); if (current?.status === "active") current.status = "validated"; execution.checkpoints.push(next); execution.activeCheckpointId = next.id; if (execution.checkpoints.length > 128) execution.checkpoints.splice(1, execution.checkpoints.length - 128); }
