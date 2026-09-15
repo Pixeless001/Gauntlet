@@ -4,7 +4,12 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GauntletEngine } from "../src/core/engine.js";
+import type { ExecutionEnvironment } from "../src/execution/types.js";
 import { run } from "../src/repo/process.js";
+import { execFile as execFileCallback } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFile = promisify(execFileCallback);
 
 test("engine executes a task lifecycle against its task-start baseline", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
@@ -48,5 +53,16 @@ test("engine tracks repeated unchanged reads and invalidates on writes", async (
     await engine.activity("observations", { kind: "file_read", target: "source.ts", outcome: "pass", outputBytes: 10 }); await engine.activity("observations", { kind: "file_read", target: "source.ts", outcome: "pass", outputBytes: 10 });
     let state = (await engine.activity("observations", { kind: "message", outputBytes: 0 })).state; assert.equal(state.session?.repeatReadsDetected, 1); assert.equal(state.session?.observations.length, 1);
     state = (await engine.activity("observations", { kind: "file_write", target: "source.ts", outcome: "pass", outputBytes: 0 })).state; assert.equal(state.session?.observations.length, 0);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("elevated new tests reject weak counterfactual evidence when a provider is available", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
+    const git = (args: string[]) => execFile("git", args, { cwd }); await git(["init"]); await git(["config", "user.email", "test@example.com"]); await git(["config", "user.name", "Test"]); await git(["add", "."]); await git(["commit", "-m", "base"]);
+    const environment: ExecutionEnvironment = { kind: "sandbox-provider", id: "old", root: cwd, run: async () => ({ command: "test", exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false }) };
+    const engine = new GauntletEngine(cwd, { preChangeEnvironment: async () => environment }); await engine.start("Fix authentication race", "task"); await writeFile(join(cwd, "auth.test.ts"), "test('race', () => {});\n");
+    const result = await engine.finish("task"); assert.equal(result.findings.some((finding) => finding.startsWith("weak-counterfactual")), true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

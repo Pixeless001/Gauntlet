@@ -21,12 +21,16 @@ import { assessRisk } from "./risk.js";
 import { loadSkill, routeSkills, type SkillName } from "./skills.js";
 import { fingerprintFiles } from "../repo/index.js";
 import { normalizeSearch, repeatedSearch } from "../context/governor.js";
+import type { ExecutionEnvironment } from "../execution/types.js";
+import { LocalExecutionEnvironment } from "../execution/local.js";
+import { verifyCounterfactual } from "../verify/counterfactual.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
+export interface EngineOptions { preChangeEnvironment?: (head: string) => Promise<ExecutionEnvironment | null> }
 export class GauntletEngine {
   private readonly store: StateStore;
-  constructor(readonly cwd: string) { this.store = new StateStore(cwd); }
+  constructor(readonly cwd: string, private readonly options: EngineOptions = {}) { this.store = new StateStore(cwd); }
 
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
     try {
@@ -76,7 +80,12 @@ export class GauntletEngine {
       state.conventionMetrics.architectureBypasses = state.findings.filter((item) => item.code === "convention-architecture-bypass").length;
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
-    const results = await runVerification(this.cwd, selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files), undefined, state.id);
+    const plan = selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files), results = await runVerification(this.cwd, plan, undefined, state.id);
+    const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
+    if (risk.level === "elevated" && newTest && testCheck && state.baseline.head && this.options.preChangeEnvironment) {
+      const before = await this.options.preChangeEnvironment(state.baseline.head), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
+      if (counterfactual.status === "weak") state.findings.push({ code: "weak-counterfactual", severity: "warning", blocking: true, message: "The new behavioral check also passes against pre-change behavior.", evidence: counterfactual.evidence });
+    }
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;
