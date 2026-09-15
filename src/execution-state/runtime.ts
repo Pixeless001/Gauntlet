@@ -42,7 +42,7 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
 function updateUncertainty(state: TaskState, activity: TaskActivity): void {
   const uncertainty = state.session?.uncertainty, target = activity.target?.toLowerCase() ?? ""; if (!uncertainty) return;
   if (activity.kind === "file_write") {
-    if (/\.(?:css|scss|sass|less|tsx|jsx|html)$/.test(target)) uncertainty.visual = "open";
+    if (uncertainty.visual !== "irrelevant" && /\.(?:css|scss|sass|less|tsx|jsx|html)$/.test(target)) uncertainty.visual = "open";
     if (/(?:^|\/)(?:migrations?|schema|auth|security|permissions?)(?:\/|\.|$)/.test(target)) { uncertainty.repoFit = "open"; uncertainty.regression = "open"; }
     if (/(?:^|\/)(?:index\.[cm]?[jt]s|package\.json)$/.test(target)) uncertainty.regression = "open";
     uncertainty.scope = "open";

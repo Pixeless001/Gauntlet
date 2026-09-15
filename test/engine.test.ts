@@ -15,7 +15,7 @@ test("engine executes a task lifecycle against its task-start baseline", async (
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
   try {
     await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
-    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } }));
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"", test: "node -e \"process.exit(0)\"" } }));
     await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "feature.ts"), "const oldValue = 1;\n");
     await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
     await writeFile(join(cwd, "preexisting.ts"), "dirty before task\n");
@@ -42,7 +42,7 @@ test("resolved finish findings do not poison later attempts", async () => {
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n");
     const engine = new GauntletEngine(cwd); await engine.start("Change tests", "task"); await writeFile(join(cwd, "client.test.ts"), ""); assert.equal((await engine.finish("task")).clean, false);
-    await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n"); assert.equal((await engine.finish("task")).clean, true);
+    await writeFile(join(cwd, "client.test.ts"), "test('x', () => assert.equal(1, 1));\n"); const repaired = await engine.finish("task"); assert.equal(repaired.findings.some((finding) => finding.startsWith("test-")), false); assert.equal(repaired.clean, false); assert.match(repaired.findings.join("\n"), /behavior remains unresolved/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -99,7 +99,7 @@ test("execution signals update workflow and risk uncertainty", async () => {
     await engine.activity("signals", { kind: "file_write", target: "src/migrations/access.ts", outcome: "pass", outputBytes: 0 });
     await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 }); await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
     const result = await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
-    assert.equal(result.state.session?.uncertainty?.visual, "open"); assert.equal(result.state.session?.uncertainty?.repoFit, "open"); assert.equal(result.state.session?.uncertainty?.regression, "open");
+    assert.equal(result.state.session?.uncertainty?.visual, "irrelevant"); assert.equal(result.state.session?.uncertainty?.repoFit, "open"); assert.equal(result.state.session?.uncertainty?.regression, "open");
     assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "repeated_rewrite"); assert.deepEqual(result.state.session?.activeSkills, ["investigate"]);
     const tested = await engine.activity("signals", { kind: "test_result", target: "component.test.tsx", outcome: "pass", outputBytes: 0 });
     assert.equal(tested.state.session?.uncertainty?.behavior, "resolved"); assert.equal(tested.state.session?.uncertainty?.regression, "open");
@@ -119,15 +119,15 @@ test("elevated new tests reject weak counterfactual evidence when a provider is 
 });
 
 test("successful completion records a validated verification checkpoint", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-verification-state-")); try { await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.ts", "verified"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("verified"); const resumed = await engine.start("", "verified"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.kind, "verification"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.status, "validated"); assert.equal(resumed.state.session?.uncertainty?.scope, "resolved"); } finally { await rm(cwd, { recursive: true, force: true }); }
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-verification-state-")); try { await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"", test: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.ts", "verified"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("verified"); const resumed = await engine.start("", "verified"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.kind, "verification"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.status, "validated"); assert.equal(resumed.state.session?.uncertainty?.scope, "resolved"); } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("static checks do not claim behavioral evidence", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-static-evidence-"));
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
-    const engine = new GauntletEngine(cwd); await engine.start("Change runtime behavior", "static"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("static");
-    const state = await engine.state("static"); assert.equal(state.session?.uncertainty?.scope, "resolved"); assert.equal(state.session?.uncertainty?.behavior, "open");
+    const engine = new GauntletEngine(cwd); await engine.start("Change runtime behavior", "static"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); const result = await engine.finish("static");
+    const state = await engine.state("static"); assert.equal(state.session?.uncertainty?.scope, "open"); assert.equal(state.session?.uncertainty?.behavior, "open"); assert.equal(result.clean, false); assert.match(result.findings.join("\n"), /behavior remains unresolved/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

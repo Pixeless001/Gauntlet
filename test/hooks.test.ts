@@ -77,6 +77,6 @@ for (const fixture of [
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
     const identity = { session_id: "contract-session", cwd }; await dispatchHook(fixture.harness, { ...identity, prompt: "Maintain contract" }, fixture.start); await dispatchHook(fixture.harness, { ...identity, tool_name: "Shell", error_message: "failed" }, fixture.activity);
-    const output = await dispatchHook(fixture.harness, identity, fixture.stop); assert.ok(fixture.harness === "cursor" ? Object.keys(output).length === 0 : String(output.systemMessage).includes("VERIFIED"));
+    const output = await dispatchHook(fixture.harness, identity, fixture.stop); assert.ok(fixture.harness === "cursor" ? String(output.followup_message).includes("not clean and verified") : output.decision === "block");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

@@ -7,8 +7,8 @@ export type UncertaintyValue = "open" | "partial" | "resolved" | "irrelevant";
 export type UncertaintyState = Record<UncertaintyKind, UncertaintyValue>;
 
 export function initialUncertainty(contract: TaskContract, risk: TaskRisk): UncertaintyState {
-  const intent = contract.acceptanceCriteria.length || contract.explicitPaths.length ? "resolved" : "open";
-  const location = contract.explicitPaths.length ? "resolved" : "open";
+  const intent = contract.intent.trim() ? "resolved" : "open";
+  const location = contract.explicitPaths.length ? "resolved" : "partial";
   const bug = /\b(?:bug|failure|crash|race|incorrect|broken)\b/i.test(contract.intent);
   const visual = /\b(?:ui|visual|layout|style|responsive|design|modal)\b/i.test(contract.intent);
   const performance = /\b(?:performance|latency|profil|optimi[sz]|throughput)\b/i.test(contract.intent);
