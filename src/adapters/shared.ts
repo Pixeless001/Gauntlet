@@ -1,6 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { eventSchema, type GauntletEvent } from "../core/events.js";
+import type { HarnessCapabilities } from "./types.js";
+
+export const hookCapabilities = (failure: boolean): HarnessCapabilities => ({
+  skills: { supported: true, dynamicLoad: true }, lifecycle: { taskStart: true, toolActivity: true, failure, beforeStop: true },
+  tools: { shell: true, mcp: false, browser: false }, delegation: { supported: false, callback: false, modelSelection: false },
+  telemetry: { tokens: false, cost: false }, environment: { worktrees: false, sandbox: false },
+});
 
 type NativeEvent = Record<string, unknown>;
 

@@ -5,12 +5,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { install, uninstall } from "../src/adapters/install.js";
 import { codexAdapter } from "../src/adapters/codex/index.js";
+import { claudeCodeAdapter } from "../src/adapters/claude-code/index.js";
+import { cursorAdapter } from "../src/adapters/cursor/index.js";
 
 test("adapter translates native events and rejects foreign events", () => {
   const event = codexAdapter.translate({ hook_event_name: "UserPromptSubmit", session_id: "1", cwd: "/repo", prompt: "fix" });
   assert.equal(event.type, "task_start"); assert.equal(event.repository, "/repo");
   assert.throws(() => codexAdapter.translate({}, "sessionStart"), /Unsupported native hook event/);
   assert.throws(() => codexAdapter.translate({}, "Stop"), /stable session identifier/);
+});
+
+test("adapters publish individually testable capabilities", () => {
+  assert.equal(claudeCodeAdapter.capabilities.lifecycle.failure, true);
+  assert.equal(codexAdapter.capabilities.lifecycle.failure, false);
+  assert.equal(cursorAdapter.capabilities.lifecycle.beforeStop, true);
+  assert.equal(codexAdapter.capabilities.delegation.supported, false);
 });
 
 test("adapter records semantic file and command activity", () => {
