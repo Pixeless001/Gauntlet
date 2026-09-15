@@ -5,9 +5,10 @@ import { walk } from "./tests.js";
 import { findRelationships } from "./relationships.js";
 import type { TaskContract } from "../core/events.js";
 import type { ConventionFact } from "./conventions.js";
+import type { RepositoryLesson } from "./lessons.js";
 
 export interface ContextEntry { path: string; reason: string; score: number }
-export interface ContextPacket { entries: ContextEntry[]; instructions: string[]; conventions: ConventionFact[]; excluded: number }
+export interface ContextPacket { entries: ContextEntry[]; instructions: string[]; conventions: ConventionFact[]; lessons: RepositoryLesson[]; excluded: number }
 
 export async function selectContext(cwd: string, contract: TaskContract, limit = 12, conventions: ConventionFact[] = [], index?: RepoIndex): Promise<ContextPacket> {
   const files = index?.files ?? await walk(cwd);
@@ -27,7 +28,7 @@ export async function selectContext(cwd: string, contract: TaskContract, limit =
   }).sort((a, b) => dirname(a).split("/").length - dirname(b).split("/").length || a.localeCompare(b));
   const instructions: string[] = [];
   for (const path of instructionFiles.slice(-4)) instructions.push(`${path}: ${(await readFile(join(cwd, path), "utf8")).slice(0, 2_000)}`);
-  return { entries: scored.slice(0, limit), instructions, conventions: conventions.slice(0, 3), excluded: Math.max(0, scored.length - limit) };
+  return { entries: scored.slice(0, limit), instructions, conventions: conventions.slice(0, 3), lessons: [], excluded: Math.max(0, scored.length - limit) };
 }
 
 export function relatedTestCandidates(changed: string[], files: string[]): string[] {
