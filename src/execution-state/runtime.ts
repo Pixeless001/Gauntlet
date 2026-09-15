@@ -4,7 +4,7 @@ import type { TaskState } from "../core/task-state.js";
 import { activePath, rejectBranch } from "./checkpoints.js";
 import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
-import { evidenceMap, type EvidenceKind } from "../verify/evidence-selector.js";
+import { hasSufficientEvidence, type EvidenceKind } from "../verify/evidence-selector.js";
 
 export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite"; causeValidated: boolean } {
   const execution = state.session?.execution;
@@ -60,8 +60,8 @@ export function recordVerification(state: TaskState, passed: boolean, evidenceRe
   else { const next = checkpoint("verification", summary, parentId ?? execution.activeCheckpointId, execution.nextEvent); next.status = status; next.evidenceRefs = [...new Set(evidenceRefs)]; execution.checkpoints.push(next); if (passed) execution.activeCheckpointId = next.id; }
   if (passed && session.uncertainty) {
     const available = new Set(supplied);
-    for (const [kind, accepted] of Object.entries(evidenceMap) as [keyof typeof session.uncertainty, EvidenceKind[]][]) {
-      if (session.uncertainty[kind] !== "irrelevant" && accepted.some((item) => available.has(item))) session.uncertainty[kind] = "resolved";
+    for (const kind of Object.keys(session.uncertainty) as (keyof typeof session.uncertainty)[]) {
+      if (session.uncertainty[kind] !== "irrelevant" && hasSufficientEvidence(kind, available)) session.uncertainty[kind] = "resolved";
     }
   }
 }

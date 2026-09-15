@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolvePackageKnowledge } from "../src/knowledge/resolver.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
-import { remainingEvidence } from "../src/verify/evidence-selector.js";
+import { hasSufficientEvidence, remainingEvidence } from "../src/verify/evidence-selector.js";
 import { correctionPacket } from "../src/verify/correction.js";
 
 test("package knowledge stops at installed types before external docs", async () => {
@@ -18,6 +18,15 @@ test("package knowledge stops at installed types before external docs", async ()
 test("evidence selection asks only for unresolved unsupported uncertainty", () => {
   const state = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
   assert.equal(remainingEvidence(state, ["reproduction", "test", "diff", "graph", "repository_rule", "contract"]).some((item) => item.uncertainty === "cause"), false);
+});
+
+test("regression uncertainty requires both structural impact and behavioral evidence", () => {
+  const resolved = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  for (const kind of Object.keys(resolved) as (keyof typeof resolved)[]) resolved[kind] = "resolved";
+  assert.equal(hasSufficientEvidence("regression", ["graph"]), false);
+  assert.equal(hasSufficientEvidence("regression", ["test"]), false);
+  assert.equal(hasSufficientEvidence("regression", ["graph", "test"]), true);
+  assert.deepEqual(remainingEvidence({ ...resolved, regression: "open" }, ["graph"]), [{ uncertainty: "regression", evidence: "test" }]);
 });
 
 test("correction packets are bounded and evidence backed", () => {
