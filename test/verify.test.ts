@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { selectVerification } from "../src/verify/selector.js";
+import { formatSummary } from "../src/reporting/summary.js";
+import { inspectTestIntegrity } from "../src/verify/test-integrity.js";
+import { captureTestSignatures } from "../src/repo/tests.js";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+test("verification uses declared tools and stops without changes", () => {
+  const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], commands: [{ name: "typecheck", command: "npm", args: ["run", "typecheck"] }, { name: "test", command: "npm", args: ["test"] }] };
+  assert.deepEqual(selectVerification(profile, []).checks.map((item) => item.id), ["typecheck"]);
+  assert.deepEqual(selectVerification(profile, [{ path: "a.ts", added: 1, removed: 0 }]).checks.map((item) => item.id), ["typecheck", "repository-tests"]);
+});
+
+test("verification targets related tests for known runners and falls back for broad changes", () => {
+  const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], testRunner: "vitest" as const, commands: [{ name: "test", command: "npm", args: ["run", "test"] }] };
+  const targeted = selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }], ["src/auth.ts", "src/auth.test.ts"]);
+  assert.equal(targeted.checks[0]?.id, "impacted-tests"); assert.deepEqual(targeted.checks[0]?.args, ["run", "test", "--", "src/auth.test.ts"]);
+  assert.equal(selectVerification(profile, [{ path: "package.json", added: 1, removed: 1 }], ["src/auth.test.ts"]).checks[0]?.id, "repository-tests");
+  assert.equal(selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }, { path: "src/billing.ts", added: 1, removed: 0 }], ["src/auth.test.ts"]).checks[0]?.id, "repository-tests");
+  assert.equal(selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }], ["src/authz.test.ts"]).checks[0]?.id, "repository-tests");
+});
+
+test("test integrity compares against task-start assertions, not HEAD", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-integrity-")), path = join(cwd, "client.test.ts");
+  try {
+    await writeFile(path, "test('x', () => expect(status).toBe(401));\n"); const before = await captureTestSignatures(cwd);
+    await writeFile(path, "test('x', () => expect(status).toBeGreaterThanOrEqual(400));\n");
+    assert.equal((await inspectTestIntegrity(cwd, before))[0]?.code, "assertion-changed");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("summary is compact and factual", () => {
+  const output = formatSummary({ version: 1, taskId: "x", startedAt: "", finishedAt: "", durationMs: 1_000, attempts: 1, files: 2, added: 3, removed: 1, testsPassed: 1, checksRun: 2, clean: true, verified: true, firstPass: true, findings: [] }, false);
+  assert.match(output, /✓ CLEAN/); assert.match(output, /LoC\s+\+3\/-1/);
+});
