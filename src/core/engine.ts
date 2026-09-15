@@ -27,6 +27,7 @@ import { initialUncertainty } from "../control/uncertainty.js";
 import { selectInterventions } from "../control/selector.js";
 import { observeExecution, recordVerification } from "../execution-state/runtime.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
+import { reconstruct } from "../execution-state/reconstruct.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -39,7 +40,7 @@ export class GauntletEngine {
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
     try {
       const state = await this.store.loadTask(id);
-      const context = await createContextPacket(this.cwd, state.contract, state.conventions, state.baseline.index);
+      const context = await createContextPacket(this.cwd, state.contract, state.conventions, state.baseline.index, reconstruct(state));
       const ambiguity = detectAmbiguity(state.contract);
       return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
     } catch (error) {

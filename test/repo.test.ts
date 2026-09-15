@@ -9,6 +9,7 @@ import { formatContext } from "../src/core/context.js";
 import { captureBaseline, changedFiles } from "../src/repo/git.js";
 import { createRepoIndex } from "../src/repo/index.js";
 import { run } from "../src/repo/process.js";
+import type { ActiveExecutionContext } from "../src/execution-state/reconstruct.js";
 
 async function fixture(run: (cwd: string) => Promise<void>) { const cwd = await mkdtemp(join(tmpdir(), "gauntlet-")); try { await run(cwd); } finally { await rm(cwd, { recursive: true, force: true }); } }
 
@@ -84,6 +85,13 @@ test("injects only applicable instructions in precedence order", () => fixture(a
   await writeFile(join(cwd, "AGENTS.md"), "root rule"); await writeFile(join(cwd, "src/AGENTS.md"), "src rule"); await writeFile(join(cwd, "other/AGENTS.md"), "other rule"); await writeFile(join(cwd, "src/feature/task.ts"), "");
   const packet = await selectContext(cwd, { intent: "Fix src/feature/task.ts", explicitPaths: ["src/feature/task.ts"], acceptanceCriteria: [], constraints: [] });
   assert.deepEqual(packet.instructions.map((value) => value.split(":")[0]), ["AGENTS.md", "src/AGENTS.md"]); assert.match(formatContext(packet), /root rule[\s\S]*src rule/); assert.doesNotMatch(formatContext(packet), /other rule/);
+}));
+
+test("formats the valid execution path without raw history", () => fixture(async (cwd) => {
+  await writeFile(join(cwd, "source.ts"), "export const value = 1\n");
+  const execution: ActiveExecutionContext = { task: "Fix behavior", acceptanceCriteria: [], constraints: [], validatedState: ["Cause established"], current: "Reuse existing primitive", relevantFiles: ["source.ts"], relevantSymbols: [], evidenceRefs: ["evidence/test.log"], open: ["regression"] };
+  const packet = await selectContext(cwd, { intent: execution.task, explicitPaths: ["source.ts"], acceptanceCriteria: [], constraints: [] }); packet.execution = execution;
+  const formatted = formatContext(packet); assert.match(formatted, /Validated: Cause established/); assert.match(formatted, /Open: regression/); assert.match(formatted, /evidence\/test\.log/);
 }));
 
 test("ranks direct imports and corresponding tests after the explicit target", () => fixture(async (cwd) => {

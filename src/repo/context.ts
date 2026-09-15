@@ -9,9 +9,10 @@ import type { RepositoryLesson } from "./lessons.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
 import { workingGraph } from "../intelligence/working-graph.js";
 import { selectMarginal, type Contribution } from "../context/marginality.js";
+import type { ActiveExecutionContext } from "../execution-state/reconstruct.js";
 
 export interface ContextEntry { path: string; reason: string; score: number }
-export interface ContextPacket { entries: ContextEntry[]; instructions: string[]; conventions: ConventionFact[]; lessons: RepositoryLesson[]; excluded: number }
+export interface ContextPacket { entries: ContextEntry[]; instructions: string[]; conventions: ConventionFact[]; lessons: RepositoryLesson[]; excluded: number; execution?: ActiveExecutionContext }
 
 export async function selectContext(cwd: string, contract: TaskContract, limit = 12, conventions: ConventionFact[] = [], index?: RepoIndex): Promise<ContextPacket> {
   const files = index?.files ?? await walk(cwd);
