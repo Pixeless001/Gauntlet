@@ -7,7 +7,7 @@ import type { EvalResult } from "./evals.js";
 
 const cases = [
   { id: "silence-readme", intent: "Fix README typo", expected: [] },
-  { id: "ordinary-change", intent: "Rename a local variable", expected: ["implement"] },
+  { id: "silence-rename", intent: "Rename a local variable", expected: [] },
   { id: "route-failure", intent: "Investigate intermittent crash", expected: ["investigate"] },
   { id: "route-performance", intent: "Optimize request latency", expected: ["optimize"] },
 ] as const;

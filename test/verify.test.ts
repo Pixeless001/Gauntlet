@@ -28,8 +28,14 @@ test("test integrity compares against task-start assertions, not HEAD", async ()
   try {
     await writeFile(path, "test('x', () => expect(status).toBe(401));\n"); const before = await captureTestSignatures(cwd);
     await writeFile(path, "test('x', () => expect(status).toBeGreaterThanOrEqual(400));\n");
-    assert.equal((await inspectTestIntegrity(cwd, before))[0]?.code, "assertion-changed");
+    const finding = (await inspectTestIntegrity(cwd, before))[0]; assert.equal(finding?.code, "assertion-weakened"); assert.equal(finding?.blocking, true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("test integrity does not block a task-scoped exact assertion update", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-integrity-")), path = join(cwd, "client.test.ts");
+  try { await writeFile(path, "test('x', () => expect(status).toBe(401));\n"); const before = await captureTestSignatures(cwd); await writeFile(path, "test('x', () => expect(status).toBe(403));\n"); const finding = (await inspectTestIntegrity(cwd, before))[0]; assert.equal(finding?.code, "assertion-changed"); assert.equal(finding?.blocking, false); }
+  finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("test integrity rejects newly added skipped tests", async () => {

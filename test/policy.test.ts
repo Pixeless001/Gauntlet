@@ -22,4 +22,5 @@ test("risk and skills are routed deterministically", () => {
   assert.deepEqual(routeSkills(contract("Improve request latency"), "start", "elevated"), ["optimize"]);
   assert.deepEqual(routeSkills(contract("Add a field"), "before_stop", "ordinary"), ["verify"]);
   assert.equal(routeSkills(contract("Review security-sensitive auth"), "before_stop", "elevated").length, 1);
+  assert.deepEqual(routeSkills(contract("Rename a local variable"), "start", "ordinary"), []);
 });

@@ -12,6 +12,7 @@ export function routeSkills(contract: TaskContract, phase: "start" | "activity" 
   if (/\b(?:optimi[sz]e|performance|latency|profil)\b/i.test(contract.intent)) return ["optimize"];
   if (/\b(?:bug|failure|crash|race)\b/i.test(contract.intent)) return ["investigate"];
   if (/\b(?:appropriate|somehow|either|whether)\b/i.test(contract.intent) && !contract.acceptanceCriteria.length) return ["understand"];
+  if (/\b(?:rename|typo|spelling|format(?:ting)?|mechanical)\b/i.test(contract.intent) && !contract.acceptanceCriteria.length) return [];
   if (risk === "minimal") return [];
   return ["implement"];
 }
