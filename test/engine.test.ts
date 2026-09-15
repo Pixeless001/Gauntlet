@@ -128,3 +128,15 @@ test("static checks do not claim behavioral evidence", async () => {
     const state = await engine.state("static"); assert.equal(state.session?.uncertainty?.scope, "resolved"); assert.equal(state.session?.uncertainty?.behavior, "open");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("documentation completion stays silent instead of expanding the code graph", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-docs-"));
+  try {
+    await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+    await writeFile(join(cwd, "README.md"), "before\n"); await writeFile(join(cwd, "source.ts"), "export const value = 1;\n");
+    await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+    const engine = new GauntletEngine(cwd); await engine.start("Fix typo in README.md", "docs"); await writeFile(join(cwd, "README.md"), "after\n");
+    const result = await engine.finish("docs");
+    assert.equal(result.selection?.graphExpansions, 0); assert.equal(result.checksRun, 1); assert.equal(result.verified, true);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

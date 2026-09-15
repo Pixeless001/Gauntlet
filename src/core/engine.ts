@@ -19,7 +19,7 @@ import { inspectConventionDrift } from "../verify/convention-drift.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
 import { assessRisk } from "./risk.js";
 import { loadSkill, routeSkills, type SkillName } from "./skills.js";
-import { fingerprintFiles } from "../repo/index.js";
+import { createRepoIndex, fingerprintFiles } from "../repo/index.js";
 import { normalizeSearch, repeatedSearch } from "../context/governor.js";
 import { LocalExecutionEnvironment } from "../execution/local.js";
 import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/counterfactual.js";
@@ -108,10 +108,12 @@ export class GauntletEngine {
       state.conventionMetrics.architectureBypasses = state.findings.filter((item) => item.code === "convention-architecture-bypass").length;
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
-    const structuralTargets = [...new Set([...changes.map((item) => item.path), ...(state.baseline.index?.files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 160) ?? [])])];
-    const structural = state.baseline.index && changes.length ? await buildStructuralIndex(this.cwd, state.baseline.index, structuralTargets, 160) : undefined;
+    const codeChanges = changes.filter((item) => /\.[cm]?[jt]sx?$/.test(item.path));
+    const currentIndex = codeChanges.length ? await createRepoIndex(this.cwd) : state.baseline.index;
+    const structuralTargets = [...new Set([...codeChanges.map((item) => item.path), ...(currentIndex?.files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 160) ?? [])])];
+    const structural = currentIndex && codeChanges.length ? await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : undefined;
     if (structural && state.session) state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1;
-    const plan = selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files, structural), results = await runVerification(this.cwd, plan, undefined, state.id);
+    const plan = selectVerification(await detectRepository(this.cwd), changes, currentIndex?.files, structural), results = await runVerification(this.cwd, plan, undefined, state.id);
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
     if (risk.level === "elevated" && newTest && testCheck && state.baseline.head && this.options.preChangeEnvironment) {
       const candidateTests = changes.filter((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path)).map((change) => change.path), before = await this.options.preChangeEnvironment(state.baseline.head, candidateTests), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
