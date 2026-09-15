@@ -6,7 +6,8 @@ export type EscalationLevel = 0 | 1 | 2 | 3 | 4 | 5;
 export type CostClass = "tiny" | "low" | "medium" | "high";
 export type RejectionReason = "resolved" | "irrelevant" | "duplicate" | "unavailable" | "dominated" | "budget_exceeded";
 export interface InterventionCandidate { id: string; skill?: SkillName; uncertainty: UncertaintyKind; level: EscalationLevel; cost: CostClass; available: boolean }
-export interface SelectionTrace { event: number; trigger: string; candidates: string[]; selected: string[]; rejected: { id: string; reason: RejectionReason }[] }
+export interface SelectedIntervention { id: string; uncertainty: UncertaintyKind; level: EscalationLevel; cost: CostClass }
+export interface SelectionTrace { event: number; trigger: string; candidates: string[]; selected: string[]; activations: SelectedIntervention[]; rejected: { id: string; reason: RejectionReason }[]; changedState?: boolean; evidenceFound?: boolean }
 
 export function selectInterventions(input: { uncertainty: UncertaintyState; candidates: InterventionCandidate[]; supplied: string[]; budget: InterventionBudget; used: number; event: number; trigger: string }): SelectionTrace {
   const selected: string[] = [], rejected: SelectionTrace["rejected"] = [];
@@ -21,7 +22,7 @@ export function selectInterventions(input: { uncertainty: UncertaintyState; cand
     if (input.used + selected.length >= input.budget.interventions) { rejected.push({ id: candidate.id, reason: "budget_exceeded" }); continue; }
     selected.push(candidate.id);
   }
-  return { event: input.event, trigger: input.trigger, candidates: ordered.map((item) => item.id), selected, rejected };
+  return { event: input.event, trigger: input.trigger, candidates: ordered.map((item) => item.id), selected, activations: selected.map((id) => { const item = ordered.find((candidate) => candidate.id === id)!; return { id, uncertainty: item.uncertainty, level: item.level, cost: item.cost }; }), rejected };
 }
 
 function cost(value: CostClass): number { return { tiny: 0, low: 1, medium: 2, high: 3 }[value]; }

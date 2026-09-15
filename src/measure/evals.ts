@@ -5,8 +5,9 @@ export interface EvalResult {
   graphExpansions?: number; externalDocCalls?: number; browserActivations?: number; delegations?: number; checkpoints?: number; rejectedBranches?: number;
 }
 export interface EvalComparison { caseId: string; baseline: EvalResult; candidate: EvalResult; cleanFirstPassImproved: boolean; overheadMs: number; contextItemsSaved: number }
-export interface SelectionQuality { falseActivationRate: number; missedActivationRate: number; duplicateInterventionRate: number; averageActivations: number; silentRate: number; stateChangeRate: number }
-export interface InterventionOutcome { activated: boolean; expected: boolean; duplicate: boolean; changedState: boolean }
+export interface SelectionQuality { falseActivationRate: number; missedActivationRate: number; duplicateInterventionRate: number; averageActivations: number; averageDepth: number; localRate: number; silentRate: number; stateChangeRate: number; evidenceYieldRate: number }
+export interface InterventionOutcome { activated: boolean; expected: boolean; duplicate: boolean; changedState: boolean; evidenceFound?: boolean; level?: 0 | 1 | 2 | 3 | 4 | 5 }
+export interface InterventionRoi { activations: number; actionable: number; stateChanges: number; evidenceYieldRate: number; stateChangeRate: number }
 export interface MemoryEfficiency { rawEvents: number; checkpoints: number; activePath: number; rejectedBranches: number; contextTokens: number; tokensRemoved: number; rejectedApproachRepeats: number }
 export interface RepositoryIntelligenceMetrics { startupMs: number; incrementalMs: number; symbols: number; edgesUsed: number; impactQueries: number; affectedTestPrecision: number; capabilitiesDiscovered: number; ruleViolations: number }
 
@@ -27,7 +28,13 @@ export function eligibleForPromotion(results: EvalComparison[], maxFalseActivati
 }
 
 export function selectionQuality(outcomes: InterventionOutcome[]): SelectionQuality {
-  if (!outcomes.length) return { falseActivationRate: 0, missedActivationRate: 0, duplicateInterventionRate: 0, averageActivations: 0, silentRate: 1, stateChangeRate: 0 };
+  if (!outcomes.length) return { falseActivationRate: 0, missedActivationRate: 0, duplicateInterventionRate: 0, averageActivations: 0, averageDepth: 0, localRate: 1, silentRate: 1, stateChangeRate: 0, evidenceYieldRate: 0 };
   const count = (predicate: (item: InterventionOutcome) => boolean) => outcomes.filter(predicate).length;
-  return { falseActivationRate: count((item) => item.activated && !item.expected) / outcomes.length, missedActivationRate: count((item) => !item.activated && item.expected) / outcomes.length, duplicateInterventionRate: count((item) => item.duplicate) / outcomes.length, averageActivations: count((item) => item.activated) / outcomes.length, silentRate: count((item) => !item.activated) / outcomes.length, stateChangeRate: count((item) => item.activated && item.changedState) / Math.max(1, count((item) => item.activated)) };
+  const activated = outcomes.filter((item) => item.activated), levels = activated.map((item) => item.level ?? 0);
+  return { falseActivationRate: count((item) => item.activated && !item.expected) / outcomes.length, missedActivationRate: count((item) => !item.activated && item.expected) / outcomes.length, duplicateInterventionRate: count((item) => item.duplicate) / outcomes.length, averageActivations: activated.length / outcomes.length, averageDepth: levels.reduce<number>((sum, level) => sum + level, 0) / Math.max(1, levels.length), localRate: activated.filter((item) => (item.level ?? 0) <= 2).length / Math.max(1, activated.length), silentRate: count((item) => !item.activated) / outcomes.length, stateChangeRate: count((item) => item.activated && item.changedState) / Math.max(1, activated.length), evidenceYieldRate: count((item) => item.activated && item.evidenceFound === true) / Math.max(1, activated.length) };
+}
+
+export function interventionRoi(outcomes: InterventionOutcome[]): InterventionRoi {
+  const activated = outcomes.filter((item) => item.activated), actionable = activated.filter((item) => item.evidenceFound).length, stateChanges = activated.filter((item) => item.changedState).length;
+  return { activations: activated.length, actionable, stateChanges, evidenceYieldRate: actionable / Math.max(1, activated.length), stateChangeRate: stateChanges / Math.max(1, activated.length) };
 }

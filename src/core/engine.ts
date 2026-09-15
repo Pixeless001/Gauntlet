@@ -79,12 +79,13 @@ export class GauntletEngine {
           value.session.uncertainty.cause = "open";
           const candidate = { id: "skill:investigate", skill: "investigate" as const, uncertainty: "cause" as const, level: 3 as const, cost: "low" as const, available: true };
           const trace = selectInterventions({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: "repeated_failure" });
-          value.session.selectionTraces = [...(value.session.selectionTraces ?? []), trace].slice(-64);
           if (trace.selected.includes(candidate.id)) {
+            trace.changedState = true;
             value.session.activeSkills = ["investigate"];
             value.session.interventionsUsed = (value.session.interventionsUsed ?? 0) + 1;
             workflowChanged = true;
           }
+          value.session.selectionTraces = [...(value.session.selectionTraces ?? []), trace].slice(-64);
         }
         if (transition.causeValidated && value.session.uncertainty) { value.session.uncertainty.cause = "resolved"; value.session.activeSkills = ["implement"]; workflowChanged = true; }
       }
