@@ -28,6 +28,7 @@ import { selectInterventions } from "../control/selector.js";
 import { observeExecution, recordVerification } from "../execution-state/runtime.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
+import type { EvidenceKind } from "../verify/evidence-selector.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -117,7 +118,9 @@ export class GauntletEngine {
       if (counterfactual.status === "weak") state.findings.push({ code: "weak-counterfactual", severity: "warning", blocking: true, message: "The new behavioral check also passes against pre-change behavior.", evidence: counterfactual.evidence });
     }
     if (state.session?.uncertainty && !state.findings.some((item) => item.code.startsWith("convention-"))) state.session.uncertainty.repoFit = state.session.uncertainty.repoFit === "irrelevant" ? "irrelevant" : "resolved";
-    recordVerification(state, results.length > 0 && results.every((result) => result.status === "pass") && state.findings.every((finding) => !finding.blocking), results.map((result) => result.evidence).filter((item): item is string => Boolean(item)));
+    const passed = results.length > 0 && results.every((result) => result.status === "pass") && state.findings.every((finding) => !finding.blocking);
+    const supplied: EvidenceKind[] = ["diff", ...(structural ? ["graph" as const] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test" as const] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule" as const])];
+    recordVerification(state, passed, results.map((result) => result.evidence).filter((item): item is string => Boolean(item)), supplied);
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;

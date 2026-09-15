@@ -4,6 +4,7 @@ import type { TaskState } from "../core/task-state.js";
 import { activePath, rejectBranch } from "./checkpoints.js";
 import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
+import { evidenceMap, type EvidenceKind } from "../verify/evidence-selector.js";
 
 export function observeExecution(state: TaskState, activity: TaskActivity): { repeatedFailure: boolean; causeValidated: boolean } {
   const execution = state.session?.execution;
@@ -35,14 +36,19 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { re
   return { repeatedFailure, causeValidated };
 }
 
-export function recordVerification(state: TaskState, passed: boolean, evidenceRefs: string[]): void {
+export function recordVerification(state: TaskState, passed: boolean, evidenceRefs: string[], supplied: EvidenceKind[] = []): void {
   const session = state.session, execution = session?.execution; if (!session || !execution) return;
   const status = passed ? "validated" : "rejected", summary = passed ? "Required machine evidence passed" : "Required machine evidence failed";
   const current = active(execution.checkpoints, execution.activeCheckpointId), parentId = current?.kind === "verification" ? current.parentId : execution.activeCheckpointId;
   const existing = current?.kind === "verification" ? current : execution.checkpoints.find((item) => item.kind === "verification" && item.parentId === parentId && item.status === status);
   if (existing) { existing.status = status; existing.summary = summary; existing.evidenceRefs = [...new Set(evidenceRefs)]; if (passed) execution.activeCheckpointId = existing.id; else if (existing.parentId) execution.activeCheckpointId = existing.parentId; }
   else { const next = checkpoint("verification", summary, parentId ?? execution.activeCheckpointId, execution.nextEvent); next.status = status; next.evidenceRefs = [...new Set(evidenceRefs)]; execution.checkpoints.push(next); if (passed) execution.activeCheckpointId = next.id; }
-  if (passed && session.uncertainty) { session.uncertainty.behavior = session.uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved"; session.uncertainty.regression = session.uncertainty.regression === "irrelevant" ? "irrelevant" : "resolved"; session.uncertainty.scope = "resolved"; }
+  if (passed && session.uncertainty) {
+    const available = new Set(supplied);
+    for (const [kind, accepted] of Object.entries(evidenceMap) as [keyof typeof session.uncertainty, EvidenceKind[]][]) {
+      if (session.uncertainty[kind] !== "irrelevant" && accepted.some((item) => available.has(item))) session.uncertainty[kind] = "resolved";
+    }
+  }
 }
 
 function checkpoint(kind: ExecutionCheckpoint["kind"], summary: string, parentId: string, event: number): ExecutionCheckpoint { return { id: randomUUID(), parentId, kind, status: "active", summary, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: event, resolves: [] }; }
