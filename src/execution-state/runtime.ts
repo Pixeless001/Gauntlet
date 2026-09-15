@@ -1,0 +1,81 @@
+import { randomUUID } from "node:crypto";
+import type { TaskActivity } from "../core/events.js";
+import type { TaskState } from "../core/task-state.js";
+import { activePath, rejectBranch } from "./checkpoints.js";
+import type { ExecutionCheckpoint } from "./checkpoints.js";
+import type { ExecutionEvent, ExecutionEventType } from "./events.js";
+import { evidenceMap, type EvidenceKind } from "../verify/evidence-selector.js";
+
+export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite"; causeValidated: boolean } {
+  const execution = state.session?.execution;
+  if (!execution) return { investigate: false, causeValidated: false };
+  if (activity.kind === "message") return { investigate: false, causeValidated: false };
+  const type: ExecutionEventType = activity.kind === "command" && activity.outcome === "fail" ? "failure" : activity.kind;
+  execution.events.push({ index: execution.nextEvent++, type, ...(activity.target ? { target: activity.target } : {}), ...(activity.outcome ? { outcome: activity.outcome } : {}), ...(activity.evidenceRef ? { evidenceRef: activity.evidenceRef } : {}) });
+  if (execution.events.length > 512) execution.events.splice(0, execution.events.length - 512);
+  const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target!);
+  const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
+  const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && execution.events.filter((item) => item.type === "file_write" && item.target === activity.target).length >= 3);
+  const investigate = repeatedFailure || repeatedRewrite, trigger = repeatedFailure ? "repeated_failure" as const : repeatedRewrite ? "repeated_rewrite" as const : undefined;
+  const causeValidated = activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
+  const approachRejected = activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
+  updateUncertainty(state, activity);
+  if (investigate && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
+    activate(execution, checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1));
+  }
+  if (causeValidated) {
+    const current = active(execution.checkpoints, execution.activeCheckpointId); if (current) { current.status = "validated"; current.resolves = ["cause"]; if (activity.evidenceRef) current.evidenceRefs.push(activity.evidenceRef); }
+    activate(execution, checkpoint("implementation", activity.target!.slice("cause:".length).trim(), execution.activeCheckpointId, execution.nextEvent - 1));
+  }
+  if (approachRejected) {
+    const current = active(execution.checkpoints, execution.activeCheckpointId);
+    if (current) {
+      const reason = activity.target!.slice("reject:".length).trim();
+      const replacement = checkpoint(current.kind === "investigation" ? "investigation" : "implementation", "Choose a replacement approach", current.parentId ?? execution.checkpoints[0]!.id, execution.nextEvent - 1);
+      execution.checkpoints = rejectBranch(execution.checkpoints, current.id, replacement, reason);
+      execution.activeCheckpointId = replacement.id;
+    }
+  }
+  return { investigate, ...(trigger ? { trigger } : {}), causeValidated };
+}
+
+function updateUncertainty(state: TaskState, activity: TaskActivity): void {
+  const uncertainty = state.session?.uncertainty, target = activity.target?.toLowerCase() ?? ""; if (!uncertainty) return;
+  if (activity.kind === "file_write") {
+    if (/\.(?:css|scss|sass|less|tsx|jsx|html)$/.test(target)) uncertainty.visual = "open";
+    if (/(?:^|\/)(?:migrations?|schema|auth|security|permissions?)(?:\/|\.|$)/.test(target)) { uncertainty.repoFit = "open"; uncertainty.regression = "open"; }
+    if (/(?:^|\/)(?:index\.[cm]?[jt]s|package\.json)$/.test(target)) uncertainty.regression = "open";
+    uncertainty.scope = "open";
+  }
+  if (activity.kind === "test_result" && activity.outcome === "pass") { uncertainty.behavior = uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved"; uncertainty.regression = uncertainty.regression === "irrelevant" ? "irrelevant" : "resolved"; }
+  if ((activity.kind === "test_result" || activity.kind === "decision_signal") && activity.outcome === "pass" && /(?:profile|benchmark|performance|latency|throughput)/.test(target)) uncertainty.performance = uncertainty.performance === "irrelevant" ? "irrelevant" : "resolved";
+}
+
+export function recordVerification(state: TaskState, passed: boolean, evidenceRefs: string[], supplied: EvidenceKind[] = []): void {
+  const session = state.session, execution = session?.execution; if (!session || !execution) return;
+  const status = passed ? "validated" : "rejected", summary = passed ? "Required machine evidence passed" : "Required machine evidence failed";
+  const current = active(execution.checkpoints, execution.activeCheckpointId), parentId = current?.kind === "verification" ? current.parentId : execution.activeCheckpointId;
+  const existing = current?.kind === "verification" ? current : execution.checkpoints.find((item) => item.kind === "verification" && item.parentId === parentId && item.status === status);
+  if (existing) { existing.status = status; existing.summary = summary; existing.evidenceRefs = [...new Set(evidenceRefs)]; if (passed) execution.activeCheckpointId = existing.id; else if (existing.parentId) execution.activeCheckpointId = existing.parentId; }
+  else { const next = checkpoint("verification", summary, parentId ?? execution.activeCheckpointId, execution.nextEvent); next.status = status; next.evidenceRefs = [...new Set(evidenceRefs)]; execution.checkpoints.push(next); if (passed) execution.activeCheckpointId = next.id; }
+  if (passed && session.uncertainty) {
+    const available = new Set(supplied);
+    for (const [kind, accepted] of Object.entries(evidenceMap) as [keyof typeof session.uncertainty, EvidenceKind[]][]) {
+      if (session.uncertainty[kind] !== "irrelevant" && accepted.some((item) => available.has(item))) session.uncertainty[kind] = "resolved";
+    }
+  }
+}
+
+function checkpoint(kind: ExecutionCheckpoint["kind"], summary: string, parentId: string, event: number): ExecutionCheckpoint { return { id: randomUUID(), parentId, kind, status: "active", summary, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: event, resolves: [] }; }
+function active(checkpoints: ExecutionCheckpoint[], id: string): ExecutionCheckpoint | undefined { return checkpoints.find((item) => item.id === id); }
+function activate(execution: NonNullable<NonNullable<TaskState["session"]>["execution"]>, next: ExecutionCheckpoint): void {
+  const current = active(execution.checkpoints, execution.activeCheckpointId);
+  if (current?.status === "active") current.status = "validated";
+  execution.checkpoints.push(next); execution.activeCheckpointId = next.id;
+  if (execution.checkpoints.length <= 128) return;
+  const required = new Set(activePath(execution.checkpoints, execution.activeCheckpointId).map((item) => item.id));
+  const rejected = execution.checkpoints.filter((item) => item.status === "rejected").slice(-16);
+  for (const item of rejected) required.add(item.id);
+  const optional = execution.checkpoints.filter((item) => !required.has(item.id)).slice(-(128 - required.size));
+  execution.checkpoints = execution.checkpoints.filter((item) => required.has(item.id) || optional.includes(item));
+}
