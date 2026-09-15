@@ -6,6 +6,7 @@ import type { InterventionBudget } from "./policy.js";
 import type { SkillName } from "./skills.js";
 import type { SearchObservation } from "../context/governor.js";
 import type { UncertaintyState } from "../control/uncertainty.js";
+import type { UncertaintyKind } from "../control/uncertainty.js";
 import type { SelectionTrace } from "../control/selector.js";
 import type { ExecutionCheckpoint } from "../execution-state/checkpoints.js";
 import type { ExecutionEvent } from "../execution-state/events.js";
@@ -58,6 +59,7 @@ export interface TaskState {
     externalDocCalls?: number;
     browserActivations?: number;
     delegations?: number;
+    exhaustedEscalation?: Partial<Record<UncertaintyKind, number>>;
     execution?: { activeCheckpointId: string; checkpoints: ExecutionCheckpoint[]; events: ExecutionEvent[]; nextEvent: number };
   };
 }
