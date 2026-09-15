@@ -14,9 +14,11 @@ export function workingGraph(index: StructuralIndex, seeds: string[], maxNodes =
   return output;
 }
 
-export interface ImpactCone { target: string; directDependents: string[]; affectedTests: string[]; packageCrossings: string[]; publicSurface: boolean; truncated: boolean }
+export interface ImpactCone { target: string; directDependents: string[]; transitiveDependents: string[]; affectedTests: string[]; packageCrossings: string[]; publicSurface: boolean; truncated: boolean }
 export function impact(index: StructuralIndex, target: string, limit = 80): ImpactCone {
-  const directDependents = (index.dependents[target] ?? []).slice(0, limit), affectedTests = [...new Set([...(index.files[target]?.tests ?? []), ...directDependents.filter((path) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(path))])];
-  const owner = index.files[target]?.packageRoot, packageCrossings = directDependents.filter((path) => index.files[path]?.packageRoot !== owner);
-  return { target, directDependents, affectedTests, packageCrossings, publicSurface: (index.files[target]?.exports.length ?? 0) > 0, truncated: (index.dependents[target]?.length ?? 0) > limit };
+  const directDependents = (index.dependents[target] ?? []).slice(0, limit), queue = [...directDependents], seen = new Set<string>();
+  while (queue.length && seen.size < limit) { const path = queue.shift()!; if (seen.has(path)) continue; seen.add(path); queue.push(...(index.dependents[path] ?? [])); }
+  const transitiveDependents = [...seen], affectedTests = [...new Set([...(index.files[target]?.tests ?? []), ...transitiveDependents.flatMap((path) => index.files[path]?.tests ?? []), ...transitiveDependents.filter((path) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(path))])];
+  const owner = index.files[target]?.packageRoot, packageCrossings = transitiveDependents.filter((path) => index.files[path]?.packageRoot !== owner);
+  return { target, directDependents, transitiveDependents, affectedTests, packageCrossings, publicSurface: (index.files[target]?.exports.length ?? 0) > 0, truncated: queue.length > 0 || (index.dependents[target]?.length ?? 0) > limit };
 }

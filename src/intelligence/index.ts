@@ -3,7 +3,10 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize } from "node:path";
 import type { RepoIndex } from "../repo/index.js";
 
-export interface StructuralFile { path: string; hash?: string; packageRoot?: string; imports: string[]; exports: string[]; symbols: string[]; tests: string[] }
+export interface StructuralFile {
+  path: string; hash?: string; packageRoot?: string; imports: string[]; exports: string[]; symbols: string[]; tests: string[];
+  calls?: string[]; references?: string[]; extends?: string[]; implements?: string[];
+}
 export interface StructuralIndex { version: 1; head: string | null; files: Record<string, StructuralFile>; dependents: Record<string, string[]> }
 
 export async function buildStructuralIndex(cwd: string, repository: RepoIndex, targets: string[] = repository.files, maxFiles = 200, maxBytes = 512_000): Promise<StructuralIndex> {
@@ -13,7 +16,12 @@ export async function buildStructuralIndex(cwd: string, repository: RepoIndex, t
     const imports = [...source.matchAll(/(?:from\s+|import\s*\(|require\s*\()\s*["']([^"']+)["']/g)].map((match) => resolveImport(path, match[1]!, known)).filter((item): item is string => Boolean(item));
     const exports = [...source.matchAll(/\bexport\s+(?:default\s+)?(?:async\s+)?(?:class|function|interface|type|const|let|var)?\s*([A-Za-z_$][\w$]*)?/g)].map((match) => match[1] ?? "default");
     const symbols = [...source.matchAll(/\b(?:class|function|interface|type|const|let|var)\s+([A-Za-z_$][\w$]*)/g)].map((match) => match[1]!);
-    files[path] = { path, hash: createHash("sha256").update(source).digest("hex"), packageRoot: packageRoot(path, known), imports: [...new Set(imports)], exports: [...new Set(exports)], symbols: [...new Set(symbols)], tests: [] };
+    const calls = [...source.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)].map((match) => match[1]!).filter((name) => !["if", "for", "while", "switch", "catch", "function"].includes(name));
+    const heritage = [...source.matchAll(/\b(?:class|interface)\s+[A-Za-z_$][\w$]*(?:\s+extends\s+([A-Za-z_$][\w$]*))?(?:\s+implements\s+([^\{]+))?/g)];
+    const extended = heritage.map((match) => match[1]).filter((item): item is string => Boolean(item));
+    const implemented = heritage.flatMap((match) => (match[2] ?? "").split(",").map((item) => item.trim()).filter((item) => /^[A-Za-z_$][\w$]*$/.test(item)));
+    const references = [...source.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map((match) => match[0]).filter((name) => !symbols.includes(name));
+    files[path] = { path, hash: createHash("sha256").update(source).digest("hex"), packageRoot: packageRoot(path, known), imports: [...new Set(imports)], exports: [...new Set(exports)], symbols: [...new Set(symbols)], tests: [], calls: [...new Set(calls)], references: [...new Set(references)].slice(0, 256), extends: [...new Set(extended)], implements: [...new Set(implemented)] };
     for (const imported of imports) dependents[imported] = [...new Set([...(dependents[imported] ?? []), path])];
   }
   for (const test of repository.tests) for (const target of Object.keys(files)) if (relatedTest(test, target)) files[target]!.tests.push(test);
