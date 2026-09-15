@@ -10,7 +10,7 @@ export const DEFAULT_INTERVENTION_BUDGET: InterventionBudget = {
   interventions: 2,
   compactions: 1,
   expensiveChecks: 1,
-  skillInvocations: 2,
+  skillInvocations: 1,
   extraLlmCalls: 0,
 };
 

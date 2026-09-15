@@ -73,7 +73,7 @@ export class GauntletEngine {
       state.conventionMetrics.architectureBypasses = state.findings.filter((item) => item.code === "convention-architecture-bypass").length;
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
-    const results = await runVerification(this.cwd, selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files));
+    const results = await runVerification(this.cwd, selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files), undefined, state.id);
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;

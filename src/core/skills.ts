@@ -7,9 +7,9 @@ import type { TaskRisk } from "./risk.js";
 export type SkillName = "understand" | "investigate" | "implement" | "verify" | "review" | "optimize";
 
 export function routeSkills(contract: TaskContract, phase: "start" | "activity" | "before_stop", risk: TaskRisk, repeatedFailure = false): SkillName[] {
-  if (phase === "before_stop") return risk === "elevated" ? ["review", "verify"] : ["verify"];
+  if (phase === "before_stop") return ["verify"];
   if (repeatedFailure) return ["investigate"];
-  if (/\b(?:optimi[sz]e|performance|latency|profil)\b/i.test(contract.intent)) return ["investigate", "optimize"];
+  if (/\b(?:optimi[sz]e|performance|latency|profil)\b/i.test(contract.intent)) return ["optimize"];
   if (/\b(?:bug|failure|crash|race)\b/i.test(contract.intent)) return ["investigate"];
   if (/\b(?:appropriate|somehow|either|whether)\b/i.test(contract.intent) && !contract.acceptanceCriteria.length) return ["understand"];
   if (risk === "minimal") return [];
