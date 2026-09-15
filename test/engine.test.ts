@@ -101,6 +101,8 @@ test("execution signals update workflow and risk uncertainty", async () => {
     const result = await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
     assert.equal(result.state.session?.uncertainty?.visual, "open"); assert.equal(result.state.session?.uncertainty?.repoFit, "open"); assert.equal(result.state.session?.uncertainty?.regression, "open");
     assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "repeated_rewrite"); assert.deepEqual(result.state.session?.activeSkills, ["investigate"]);
+    const tested = await engine.activity("signals", { kind: "test_result", target: "component.test.tsx", outcome: "pass", outputBytes: 0 });
+    assert.equal(tested.state.session?.uncertainty?.behavior, "resolved"); assert.equal(tested.state.session?.uncertainty?.regression, "open");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

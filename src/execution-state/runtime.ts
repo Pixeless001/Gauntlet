@@ -47,7 +47,7 @@ function updateUncertainty(state: TaskState, activity: TaskActivity): void {
     if (/(?:^|\/)(?:index\.[cm]?[jt]s|package\.json)$/.test(target)) uncertainty.regression = "open";
     uncertainty.scope = "open";
   }
-  if (activity.kind === "test_result" && activity.outcome === "pass") { uncertainty.behavior = uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved"; uncertainty.regression = uncertainty.regression === "irrelevant" ? "irrelevant" : "resolved"; }
+  if (activity.kind === "test_result" && activity.outcome === "pass") uncertainty.behavior = uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved";
   if ((activity.kind === "test_result" || activity.kind === "decision_signal") && activity.outcome === "pass" && /(?:profile|benchmark|performance|latency|throughput)/.test(target)) uncertainty.performance = uncertainty.performance === "irrelevant" ? "irrelevant" : "resolved";
 }
 
