@@ -78,3 +78,13 @@ test("reports a conflicting dependency from strong task-start evidence", async (
     assert.equal(findings[0]?.code, "convention-dependency-conflict");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("blocks a machine-verifiable strong architecture bypass", async () => {
+  const cwd = await fixture();
+  try {
+    await mkdir(join(cwd, "src/routes"), { recursive: true }); await writeFile(join(cwd, "src/routes/team.ts"), "import { db } from '../database.js';\n");
+    const state = { version: 1, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: { intent: "Add route", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: [{ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sources: [], representatives: [] }], activities: [], findings: [], attempts: 1 } satisfies TaskState;
+    const finding = (await inspectConventionDrift(cwd, state, [{ path: "src/routes/team.ts", added: 1, removed: 0 }]))[0];
+    assert.equal(finding?.code, "convention-architecture-bypass"); assert.equal(finding?.blocking, true); assert.deepEqual(finding?.evidence, ["src/routes/team.ts", "architecture.db-access"]);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});

@@ -22,5 +22,5 @@ test("evidence selection asks only for unresolved unsupported uncertainty", () =
 
 test("correction packets are bounded and evidence backed", () => {
   const packet = correctionPacket([{ code: "route", severity: "error", blocking: true, message: "Route bypasses repository layer", evidence: ["src/route.ts:4"] }], ["src/route.ts"]);
-  assert.deepEqual(packet?.scope, ["src/route.ts"]); assert.deepEqual(packet?.evidence, ["src/route.ts:4"]);
+  assert.deepEqual(packet?.scope, ["src/route.ts"]); assert.deepEqual(packet?.evidence, ["src/route.ts:4"]); assert.equal(packet?.uncertainty, "regression");
 });

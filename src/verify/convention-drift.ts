@@ -22,7 +22,7 @@ export async function inspectConventionDrift(cwd: string, state: TaskState, chan
       if (capability) findings.push({ code: "convention-duplicate-primitive", severity: "warning", blocking: false, message: "A new shared helper overlaps an established local primitive; reuse it if possible.", evidence: [change.path, ...capability.representatives.slice(0, 1)] });
     }
     if (/(?:^|\/)(?:routes?|controllers?)\//.test(change.path)) {
-      try { const content = await readFile(join(cwd, change.path), "utf8"); if (/from\s+["'][^"']*(?:db|database|prisma|sequelize)[^"']*["']/.test(content) && strong.some((fact) => fact.id === "architecture.db-access")) findings.push({ code: "convention-architecture-bypass", severity: "warning", blocking: false, message: "A route imports database infrastructure directly despite the repository-layer convention.", evidence: [change.path] }); } catch { /* deleted file */ }
+      try { const content = await readFile(join(cwd, change.path), "utf8"); if (/from\s+["'][^"']*(?:db|database|prisma|sequelize)[^"']*["']/.test(content) && strong.some((fact) => fact.id === "architecture.db-access")) findings.push({ code: "convention-architecture-bypass", severity: "error", blocking: true, message: "A route imports database infrastructure directly despite the repository-layer convention.", evidence: [change.path, "architecture.db-access"] }); } catch { /* deleted file */ }
     }
   }
   return deduplicate(findings);
