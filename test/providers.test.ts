@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveDomains } from "../src/domains/resolver.js";
-import { silenceResult } from "../src/measure/evals.js";
+import { compareEval, eligibleForPromotion, silenceResult } from "../src/measure/evals.js";
 
 const profile = { packageManager: "npm", language: ["typescript"], dependencies: ["react"], commands: [], harnesses: [] };
 test("detected domains remain inactive for unrelated work", () => {
@@ -16,4 +16,13 @@ test("typescript alone does not pretend React or UI capability exists", () => {
 
 test("silence evaluations expose concrete overhead measures", () => {
   const result = silenceResult("rename", 2); assert.equal(result.passed, true); assert.equal(result.interventions, 0); assert.equal(result.extraModelCalls, 0);
+});
+
+test("promotion requires measured improvement without regressions", () => {
+  const candidate = (caseId: string, passed: boolean) => silenceResult(caseId, 2, { category: "behavior", passed });
+  const results = ["a", "b", "c"].map((id, index) => compareEval(candidate(id, index !== 0), candidate(id, true)));
+  assert.equal(eligibleForPromotion(results), true);
+  assert.equal(eligibleForPromotion(results.slice(0, 2)), false);
+  const regressed = [...results.slice(0, 2), compareEval(candidate("c", true), candidate("c", false))];
+  assert.equal(eligibleForPromotion(regressed), false);
 });
