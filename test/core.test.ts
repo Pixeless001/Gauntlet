@@ -57,6 +57,12 @@ test("only blocking findings prevent a clean result", () => {
   assert.equal(measure(advisory, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, true); assert.equal(measure(blocking, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, false);
 });
 
+test("measurement exposes selection and execution-memory restraint", () => {
+  const value = state(); value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 0, compactions: 0, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 1, extraLlmCalls: 0 }, observations: [], repeatReadsDetected: 0, selectionTraces: [], interventionsUsed: 0, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, execution: { activeCheckpointId: "root", nextEvent: 1, events: [{ index: 0, type: "command", outcome: "pass" }], checkpoints: [{ id: "root", kind: "task", status: "active", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }] } };
+  const result = measure(value, [], [{ id: "check", reason: "check", command: "check", exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, status: "pass", summary: "pass" }]);
+  assert.deepEqual(result.selection, { interventions: 0, traces: 0, averageDepth: 0, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0 }); assert.deepEqual(result.memory, { rawEvents: 1, checkpoints: 1, activePath: 1, rejectedBranches: 0 });
+});
+
 test("state ids cannot escape the local state directory", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-"));
   try { await assert.rejects(new StateStore(cwd).loadTask("../../outside"), /Invalid task id/); } finally { await rm(cwd, { recursive: true, force: true }); }

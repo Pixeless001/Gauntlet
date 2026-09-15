@@ -54,6 +54,10 @@ export interface TaskState {
     uncertainty?: UncertaintyState;
     selectionTraces?: SelectionTrace[];
     interventionsUsed?: number;
+    graphExpansions?: number;
+    externalDocCalls?: number;
+    browserActivations?: number;
+    delegations?: number;
     execution?: { activeCheckpointId: string; checkpoints: ExecutionCheckpoint[]; events: ExecutionEvent[]; nextEvent: number };
   };
 }

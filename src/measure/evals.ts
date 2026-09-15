@@ -1,7 +1,8 @@
-export type EvalCategory = "routing" | "behavior" | "enforcement" | "context" | "verification" | "overhead" | "domain" | "portability";
+export type EvalCategory = "routing" | "behavior" | "enforcement" | "context" | "verification" | "overhead" | "domain" | "portability" | "execution-state" | "intelligence" | "selection" | "memory";
 export interface EvalResult {
   category: EvalCategory; caseId: string; passed: boolean; durationMs: number; interventions: number; extraModelCalls: number;
   contextItems: number; repeatedReads: number; rawOutputBytes: number; conditionedOutputBytes: number; evidence: string[];
+  graphExpansions?: number; externalDocCalls?: number; browserActivations?: number; delegations?: number; checkpoints?: number; rejectedBranches?: number;
 }
 export interface EvalComparison { caseId: string; baseline: EvalResult; candidate: EvalResult; cleanFirstPassImproved: boolean; overheadMs: number; contextItemsSaved: number }
 
