@@ -35,3 +35,9 @@ test("branch revision resumes from the nearest validated boundary without mutati
   assert.equal(revised.find((item) => item.id === "next")?.parentId, "root");
   assert.equal(rejectedOverlap(revised, "create retry wrapper")?.id, "leaf");
 });
+
+test("active paths reject missing checkpoints and broken ancestry", () => {
+  assert.throws(() => activePath([], "missing"), /checkpoint is missing/);
+  const orphan: ExecutionCheckpoint = { id: "orphan", parentId: "missing", kind: "implementation", status: "active", summary: "orphan", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] };
+  assert.throws(() => activePath([orphan], "orphan"), /parent is missing/);
+});

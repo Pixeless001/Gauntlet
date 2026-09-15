@@ -81,6 +81,16 @@ test("validated cause resumes implementation on the active execution path", asyn
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("workflow transitions do not consume the compaction budget", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-workflow-budget-"));
+  try {
+    await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "budget");
+    await engine.activity("budget", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
+    const transitioned = await engine.activity("budget", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
+    assert.equal(transitioned.continuation?.workflow, "investigate"); assert.equal((await engine.state("budget")).session?.compactions, 0);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("elevated new tests reject weak counterfactual evidence when a provider is available", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
   try {

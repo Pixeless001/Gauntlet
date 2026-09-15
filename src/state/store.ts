@@ -7,6 +7,7 @@ import { MAX_STATE_BYTES } from "../core/policy.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../core/policy.js";
 import { initialUncertainty } from "../control/uncertainty.js";
 import { assessRisk } from "../core/risk.js";
+import type { ExecutionCheckpoint } from "../execution-state/checkpoints.js";
 
 export class StateStore {
   readonly directory: string;
@@ -24,9 +25,12 @@ export class StateStore {
     if (Buffer.byteLength(content) > MAX_STATE_BYTES) throw new Error("Gauntlet state exceeds 256KB");
     const state = JSON.parse(content) as TaskState;
     if (state.version !== 1 || state.id !== id || typeof state.repository !== "string" || resolve(state.repository) !== this.repository || !Array.isArray(state.activities)) throw new Error("Invalid Gauntlet task state");
-    if (state.session) state.session = {
-      currentApproach: state.session.currentApproach ?? "", decisions: state.session.decisions ?? [], resolvedIssues: state.session.resolvedIssues ?? [], unresolvedIssues: state.session.unresolvedIssues ?? [], failedApproaches: state.session.failedApproaches ?? [], activeSkills: state.session.activeSkills ?? [], lastCompactedActivity: state.session.lastCompactedActivity ?? 0, compactions: state.session.compactions ?? 0, budget: state.session.budget ?? { ...DEFAULT_INTERVENTION_BUDGET }, observations: state.session.observations ?? [], repeatReadsDetected: state.session.repeatReadsDetected ?? 0, searches: state.session.searches ?? [], repeatSearchesDetected: state.session.repeatSearchesDetected ?? 0, uncertainty: state.session.uncertainty ?? initialUncertainty(state.contract, assessRisk(state.contract).level), selectionTraces: state.session.selectionTraces ?? [], interventionsUsed: state.session.interventionsUsed ?? state.session.activeSkills?.length ?? 0, graphExpansions: state.session.graphExpansions ?? 0, externalDocCalls: state.session.externalDocCalls ?? 0, browserActivations: state.session.browserActivations ?? 0, delegations: state.session.delegations ?? 0, exhaustedEscalation: state.session.exhaustedEscalation ?? {}, ...(state.session.execution ? { execution: { ...state.session.execution, events: state.session.execution.events ?? [], nextEvent: state.session.execution.nextEvent ?? 0 } } : {}),
+    if (state.session) {
+      const root: ExecutionCheckpoint = { id: "task-root", kind: "task", status: "active", summary: state.contract.intent, constraints: [...state.contract.constraints], decisions: [], relevantFiles: [...state.contract.explicitPaths], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] };
+      state.session = {
+      currentApproach: state.session.currentApproach ?? "", decisions: state.session.decisions ?? [], resolvedIssues: state.session.resolvedIssues ?? [], unresolvedIssues: state.session.unresolvedIssues ?? [], failedApproaches: state.session.failedApproaches ?? [], activeSkills: state.session.activeSkills ?? [], lastCompactedActivity: state.session.lastCompactedActivity ?? 0, compactions: state.session.compactions ?? 0, budget: state.session.budget ?? { ...DEFAULT_INTERVENTION_BUDGET }, observations: state.session.observations ?? [], repeatReadsDetected: state.session.repeatReadsDetected ?? 0, searches: state.session.searches ?? [], repeatSearchesDetected: state.session.repeatSearchesDetected ?? 0, uncertainty: state.session.uncertainty ?? initialUncertainty(state.contract, assessRisk(state.contract).level), selectionTraces: state.session.selectionTraces ?? [], interventionsUsed: state.session.interventionsUsed ?? state.session.activeSkills?.length ?? 0, graphExpansions: state.session.graphExpansions ?? 0, externalDocCalls: state.session.externalDocCalls ?? 0, browserActivations: state.session.browserActivations ?? 0, delegations: state.session.delegations ?? 0, exhaustedEscalation: state.session.exhaustedEscalation ?? {}, execution: state.session.execution ? { ...state.session.execution, events: state.session.execution.events ?? [], nextEvent: state.session.execution.nextEvent ?? 0 } : { activeCheckpointId: root.id, checkpoints: [root], events: [], nextEvent: 0 },
     };
+    }
     return state;
   }
   async updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState> {

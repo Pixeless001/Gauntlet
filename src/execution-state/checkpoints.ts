@@ -11,9 +11,12 @@ export interface ExecutionCheckpoint {
 export function activePath(checkpoints: ExecutionCheckpoint[], activeId: string): ExecutionCheckpoint[] {
   const byId = new Map(checkpoints.map((item) => [item.id, item])), path: ExecutionCheckpoint[] = [];
   let current = byId.get(activeId), seen = new Set<string>();
+  if (!current) throw new Error("Active execution checkpoint is missing");
   while (current) {
     if (seen.has(current.id)) throw new Error("Execution checkpoint cycle");
-    seen.add(current.id); path.push(current); current = current.parentId ? byId.get(current.parentId) : undefined;
+    seen.add(current.id); path.push(current);
+    if (current.parentId && !byId.has(current.parentId)) throw new Error("Execution checkpoint parent is missing");
+    current = current.parentId ? byId.get(current.parentId) : undefined;
   }
   return path.reverse();
 }

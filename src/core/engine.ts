@@ -92,7 +92,7 @@ export class GauntletEngine {
       const skill = state.session?.activeSkills[0];
       continuation = { ...continuation, ...(skill ? { workflow: skill, guidance: await loadSkill(skill) } : {}) };
     }
-    if (continuation) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });
+    if (continuation && decision.compact) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });
     return { state, continuation };
   }
 

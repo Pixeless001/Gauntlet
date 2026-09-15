@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { TaskActivity } from "../core/events.js";
 import type { TaskState } from "../core/task-state.js";
-import { rejectBranch } from "./checkpoints.js";
+import { activePath, rejectBranch } from "./checkpoints.js";
 import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
 
@@ -47,4 +47,14 @@ export function recordVerification(state: TaskState, passed: boolean, evidenceRe
 
 function checkpoint(kind: ExecutionCheckpoint["kind"], summary: string, parentId: string, event: number): ExecutionCheckpoint { return { id: randomUUID(), parentId, kind, status: "active", summary, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: event, resolves: [] }; }
 function active(checkpoints: ExecutionCheckpoint[], id: string): ExecutionCheckpoint | undefined { return checkpoints.find((item) => item.id === id); }
-function activate(execution: NonNullable<NonNullable<TaskState["session"]>["execution"]>, next: ExecutionCheckpoint): void { const current = active(execution.checkpoints, execution.activeCheckpointId); if (current?.status === "active") current.status = "validated"; execution.checkpoints.push(next); execution.activeCheckpointId = next.id; if (execution.checkpoints.length > 128) execution.checkpoints.splice(1, execution.checkpoints.length - 128); }
+function activate(execution: NonNullable<NonNullable<TaskState["session"]>["execution"]>, next: ExecutionCheckpoint): void {
+  const current = active(execution.checkpoints, execution.activeCheckpointId);
+  if (current?.status === "active") current.status = "validated";
+  execution.checkpoints.push(next); execution.activeCheckpointId = next.id;
+  if (execution.checkpoints.length <= 128) return;
+  const required = new Set(activePath(execution.checkpoints, execution.activeCheckpointId).map((item) => item.id));
+  const rejected = execution.checkpoints.filter((item) => item.status === "rejected").slice(-16);
+  for (const item of rejected) required.add(item.id);
+  const optional = execution.checkpoints.filter((item) => !required.has(item.id)).slice(-(128 - required.size));
+  execution.checkpoints = execution.checkpoints.filter((item) => required.has(item.id) || optional.includes(item));
+}
