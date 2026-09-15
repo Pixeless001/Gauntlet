@@ -1,6 +1,6 @@
 export type CapabilityKind = "search" | "output" | "execution" | "docs" | "browser" | "delegation" | "registry" | "reference" | "skill";
 export type CapabilitySource = "repository" | "host" | "installed" | "gauntlet";
-export interface Capability<T = unknown> { id: string; kind: CapabilityKind; source: CapabilitySource; available: boolean; value: () => T; version?: string }
+export interface Capability<T = unknown> { id: string; kind: CapabilityKind; source: CapabilitySource; available: boolean; value: () => T; version?: string; escalation?: 0 | 1 | 2 | 3 | 4 | 5; cost?: "tiny" | "low" | "medium" | "high"; resolves?: string[]; stopWhen?: string }
 
 export class CapabilityRegistry {
   private readonly entries = new Map<CapabilityKind, Capability[]>();
