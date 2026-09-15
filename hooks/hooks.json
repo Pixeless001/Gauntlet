@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/dist/src/cli.js\" hook auto",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/dist/src/cli.js\" hook auto",
             "timeout": 10,
             "additionalContextLimit": 1500
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/dist/src/cli.js\" hook auto",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/dist/src/cli.js\" hook auto",
             "timeout": 5,
             "additionalContextLimit": 800
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/dist/src/cli.js\" hook auto",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/dist/src/cli.js\" hook auto",
             "timeout": 180
           }
         ]
