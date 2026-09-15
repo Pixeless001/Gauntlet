@@ -20,6 +20,7 @@ import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
 import { assessRisk } from "./risk.js";
 import { loadSkill, routeSkills, type SkillName } from "./skills.js";
 import { fingerprintFiles } from "../repo/index.js";
+import { normalizeSearch, repeatedSearch } from "../context/governor.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -41,7 +42,7 @@ export class GauntletEngine {
     const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
     const risk = assessRisk(contract);
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0 } };
+    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0 } };
     await this.store.saveTask(state);
     return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
@@ -57,6 +58,8 @@ export class GauntletEngine {
         value.session.observations = [{ path: activity.target, hash: fingerprint.hash, lastObserved: value.activities.length, relevantSymbols: [] }, ...value.session.observations.filter((item) => item.path !== activity.target)].slice(0, 64);
       }
       if (value.session && activity.kind === "file_write" && activity.target) value.session.observations = value.session.observations.filter((item) => item.path !== activity.target);
+      const search = activity.kind === "command" && activity.target ? normalizeSearch(activity.target) : null;
+      if (value.session && search) { const observation = { ...search, version: value.baseline.index?.head ?? "filesystem", matches: [] }, searches = value.session.searches ?? []; if (repeatedSearch(searches, observation)) value.session.repeatSearchesDetected = (value.session.repeatSearchesDetected ?? 0) + 1; else value.session.searches = [observation, ...searches].slice(0, 32); }
     });
     const decision = shouldCompact(state), continuation = decision.compact ? compact(state) : null;
     if (continuation) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });
