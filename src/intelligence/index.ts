@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize } from "node:path";
 import type { RepoIndex } from "../repo/index.js";
 
-export interface StructuralFile { path: string; imports: string[]; exports: string[]; symbols: string[]; tests: string[] }
+export interface StructuralFile { path: string; hash?: string; packageRoot?: string; imports: string[]; exports: string[]; symbols: string[]; tests: string[] }
 export interface StructuralIndex { version: 1; head: string | null; files: Record<string, StructuralFile>; dependents: Record<string, string[]> }
 
 export async function buildStructuralIndex(cwd: string, repository: RepoIndex, targets: string[] = repository.files, maxFiles = 200, maxBytes = 512_000): Promise<StructuralIndex> {
@@ -12,9 +13,18 @@ export async function buildStructuralIndex(cwd: string, repository: RepoIndex, t
     const imports = [...source.matchAll(/(?:from\s+|import\s*\(|require\s*\()\s*["']([^"']+)["']/g)].map((match) => resolveImport(path, match[1]!, known)).filter((item): item is string => Boolean(item));
     const exports = [...source.matchAll(/\bexport\s+(?:default\s+)?(?:async\s+)?(?:class|function|interface|type|const|let|var)?\s*([A-Za-z_$][\w$]*)?/g)].map((match) => match[1] ?? "default");
     const symbols = [...source.matchAll(/\b(?:class|function|interface|type|const|let|var)\s+([A-Za-z_$][\w$]*)/g)].map((match) => match[1]!);
-    files[path] = { path, imports: [...new Set(imports)], exports: [...new Set(exports)], symbols: [...new Set(symbols)], tests: [] };
+    files[path] = { path, hash: createHash("sha256").update(source).digest("hex"), packageRoot: packageRoot(path, known), imports: [...new Set(imports)], exports: [...new Set(exports)], symbols: [...new Set(symbols)], tests: [] };
     for (const imported of imports) dependents[imported] = [...new Set([...(dependents[imported] ?? []), path])];
   }
+  for (const test of repository.tests) for (const target of Object.keys(files)) if (relatedTest(test, target)) files[target]!.tests.push(test);
+  return { version: 1, head: repository.head, files, dependents };
+}
+
+export async function updateStructuralIndex(cwd: string, repository: RepoIndex, previous: StructuralIndex, changed: string[], maxFiles = 200, maxBytes = 512_000): Promise<StructuralIndex> {
+  const live = new Set(repository.files), retained = Object.fromEntries(Object.entries(previous.files).filter(([path]) => live.has(path) && !changed.includes(path)));
+  const fresh = await buildStructuralIndex(cwd, repository, changed, maxFiles, maxBytes), files = { ...retained, ...fresh.files }, dependents: Record<string, string[]> = {};
+  for (const file of Object.values(files)) for (const imported of file.imports) dependents[imported] = [...new Set([...(dependents[imported] ?? []), file.path])];
+  for (const file of Object.values(files)) file.tests = [];
   for (const test of repository.tests) for (const target of Object.keys(files)) if (relatedTest(test, target)) files[target]!.tests.push(test);
   return { version: 1, head: repository.head, files, dependents };
 }
@@ -28,4 +38,14 @@ function resolveImport(from: string, specifier: string, known: Set<string>): str
 function relatedTest(test: string, target: string): boolean {
   const stem = target.slice(0, -extname(target).length), name = stem.split("/").at(-1)!;
   return test.startsWith(`${stem}.test.`) || test.startsWith(`${stem}.spec.`) || test.includes(`/${name}.test.`) || test.includes(`/${name}.spec.`);
+}
+
+function packageRoot(path: string, known: Set<string>): string {
+  const parts = dirname(path).split("/").filter(Boolean);
+  while (parts.length) {
+    const root = parts.join("/");
+    if (known.has(`${root}/package.json`) || known.has(`${root}/Cargo.toml`) || known.has(`${root}/pyproject.toml`)) return root;
+    parts.pop();
+  }
+  return ".";
 }

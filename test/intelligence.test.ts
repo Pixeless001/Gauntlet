@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildStructuralIndex } from "../src/intelligence/index.js";
+import { buildStructuralIndex, updateStructuralIndex } from "../src/intelligence/index.js";
 import { impact, workingGraph } from "../src/intelligence/working-graph.js";
 import { selectMarginal } from "../src/context/marginality.js";
 import type { RepoIndex } from "../src/repo/index.js";
@@ -14,8 +14,19 @@ test("structural intelligence finds imports, dependents, exports, symbols, and t
     await writeFile(join(cwd, "owner.ts"), "export function owner() {}\n"); await writeFile(join(cwd, "caller.ts"), "import { owner } from './owner.js'; owner();\n"); await writeFile(join(cwd, "owner.test.ts"), "test('owner', () => {});\n");
     const repository: RepoIndex = { mode: "filesystem", head: null, files: ["owner.ts", "caller.ts", "owner.test.ts"], tests: ["owner.test.ts"], configs: [], dirty: [], fingerprints: {} };
     const index = await buildStructuralIndex(cwd, repository), cone = impact(index, "owner.ts");
-    assert.deepEqual(index.dependents["owner.ts"], ["caller.ts"]); assert.deepEqual(index.files["owner.ts"]?.symbols, ["owner"]); assert.equal(cone.publicSurface, true); assert.deepEqual(cone.affectedTests, ["owner.test.ts"]);
+    assert.deepEqual(index.dependents["owner.ts"], ["caller.ts"]); assert.deepEqual(index.files["owner.ts"]?.symbols, ["owner"]); assert.equal(cone.publicSurface, true); assert.deepEqual(cone.affectedTests, ["owner.test.ts"]); assert.deepEqual(cone.packageCrossings, []);
     assert.deepEqual(workingGraph(index, ["owner.ts"]).map((item) => item.path), ["owner.ts", "caller.ts", "owner.test.ts"]);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("structural intelligence incrementally replaces changed files and removes deleted files", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-index-update-"));
+  try {
+    await mkdir(join(cwd, "pkg")); await writeFile(join(cwd, "package.json"), "{}"); await writeFile(join(cwd, "pkg/a.ts"), "export const oldName = 1;\n"); await writeFile(join(cwd, "gone.ts"), "export const gone = 1;\n");
+    const firstRepo: RepoIndex = { mode: "filesystem", head: null, files: ["package.json", "pkg/a.ts", "gone.ts"], tests: [], configs: ["package.json"], dirty: [], fingerprints: {} };
+    const first = await buildStructuralIndex(cwd, firstRepo); await writeFile(join(cwd, "pkg/a.ts"), "export const newName = 2;\n"); await rm(join(cwd, "gone.ts"));
+    const nextRepo: RepoIndex = { ...firstRepo, files: ["package.json", "pkg/a.ts"] }, next = await updateStructuralIndex(cwd, nextRepo, first, ["pkg/a.ts", "gone.ts"]);
+    assert.deepEqual(next.files["pkg/a.ts"]?.symbols, ["newName"]); assert.equal(next.files["gone.ts"], undefined); assert.notEqual(next.files["pkg/a.ts"]?.hash, first.files["pkg/a.ts"]?.hash);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
