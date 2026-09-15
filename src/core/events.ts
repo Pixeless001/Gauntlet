@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 export const activitySchema = z.object({
-  kind: z.enum(["command", "file_read", "file_write", "message"]),
+  kind: z.enum(["command", "file_read", "file_write", "search", "test_result", "diff_change", "decision_signal", "message"]),
   target: z.string().optional(),
   outcome: z.enum(["pass", "fail", "unknown"]).optional(),
   outputBytes: z.number().int().nonnegative().default(0),
+  evidenceRef: z.string().optional(),
 });
 
 const base = z.object({

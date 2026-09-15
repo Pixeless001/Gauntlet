@@ -8,6 +8,7 @@ import type { SearchObservation } from "../context/governor.js";
 import type { UncertaintyState } from "../control/uncertainty.js";
 import type { SelectionTrace } from "../control/selector.js";
 import type { ExecutionCheckpoint } from "../execution-state/checkpoints.js";
+import type { ExecutionEvent } from "../execution-state/events.js";
 
 export interface FileDelta { path: string; added: number; removed: number }
 export interface TestSignature { assertions: string[]; skipped: number }
@@ -53,6 +54,6 @@ export interface TaskState {
     uncertainty?: UncertaintyState;
     selectionTraces?: SelectionTrace[];
     interventionsUsed?: number;
-    execution?: { activeCheckpointId: string; checkpoints: ExecutionCheckpoint[] };
+    execution?: { activeCheckpointId: string; checkpoints: ExecutionCheckpoint[]; events: ExecutionEvent[]; nextEvent: number };
   };
 }

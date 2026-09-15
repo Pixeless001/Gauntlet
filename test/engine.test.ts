@@ -68,6 +68,17 @@ test("engine activates investigation after a repeated unresolved failure", async
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("validated cause resumes implementation on the active execution path", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-cause-"));
+  try {
+    await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Fix race in source.ts", "cause");
+    await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 }); await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 });
+    const result = await engine.activity("cause", { kind: "decision_signal", target: "cause: missing request coalescing", outcome: "pass", outputBytes: 0, evidenceRef: "test:race" });
+    assert.deepEqual(result.state.session?.activeSkills, ["implement"]); assert.equal(result.state.session?.uncertainty?.cause, "resolved");
+    assert.equal(result.state.session?.execution?.checkpoints.at(-1)?.kind, "implementation"); assert.equal(result.state.session?.execution?.events.at(-1)?.evidenceRef, "test:race");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("elevated new tests reject weak counterfactual evidence when a provider is available", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
   try {
