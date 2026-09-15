@@ -2,7 +2,7 @@ import type { TaskState } from "./task-state.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
 
 export interface CompactionDecision { compact: boolean; reasons: string[] }
-export interface ContinuationRecord { task: string; acceptanceCriteria: string[]; constraints: string[]; repoConstraints: string[]; workingSet: string[]; unresolved: string[]; failedApproaches: string[] }
+export interface ContinuationRecord { task: string; acceptanceCriteria: string[]; constraints: string[]; repoConstraints: string[]; workingSet: string[]; unresolved: string[]; failedApproaches: string[]; workflow?: string; guidance?: string }
 
 export function shouldCompact(state: TaskState): CompactionDecision {
   const activities = state.activities.slice(state.session?.lastCompactedActivity ?? 0);

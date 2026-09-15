@@ -58,6 +58,7 @@ export class GauntletEngine {
 
   async activity(id: string, activity: TaskActivity): Promise<ActivityResult> {
     const fingerprint = activity.kind === "file_read" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
+    let workflowChanged = false;
     const state = await this.store.updateTask(id, (value) => {
       value.activities.push(activity); if (value.activities.length > 1_000) { value.activities.splice(0, value.activities.length - 1_000); if (value.session) value.session.lastCompactedActivity = Math.max(0, value.session.lastCompactedActivity - 1); } const loop = loopFinding(value);
       if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
@@ -80,12 +81,17 @@ export class GauntletEngine {
           if (trace.selected.includes(candidate.id)) {
             value.session.activeSkills = ["investigate"];
             value.session.interventionsUsed = (value.session.interventionsUsed ?? 0) + 1;
+            workflowChanged = true;
           }
         }
-        if (transition.causeValidated && value.session.uncertainty) { value.session.uncertainty.cause = "resolved"; value.session.activeSkills = ["implement"]; }
+        if (transition.causeValidated && value.session.uncertainty) { value.session.uncertainty.cause = "resolved"; value.session.activeSkills = ["implement"]; workflowChanged = true; }
       }
     });
-    const decision = shouldCompact(state), continuation = decision.compact ? compact(state) : null;
+    const decision = shouldCompact(state); let continuation = decision.compact || workflowChanged ? compact(state) : null;
+    if (continuation && workflowChanged) {
+      const skill = state.session?.activeSkills[0];
+      continuation = { ...continuation, ...(skill ? { workflow: skill, guidance: await loadSkill(skill) } : {}) };
+    }
     if (continuation) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });
     return { state, continuation };
   }
