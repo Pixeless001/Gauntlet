@@ -54,3 +54,9 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
 }
 
 export async function runHook(harness: HarnessName, nativeEvent?: string): Promise<void> { process.stdout.write(`${JSON.stringify(await dispatchHook(harness, await stdin(), nativeEvent))}\n`); }
+
+export function harnessForEvent(name: string): HarnessName { return /^[a-z]/.test(name) ? "cursor" : "claude-code"; }
+export async function runAutoHook(nativeEvent?: string): Promise<void> {
+  const input = await stdin(), name = nativeEvent ?? eventName(input);
+  process.stdout.write(`${JSON.stringify(await dispatchHook(harnessForEvent(name), input, name))}\n`);
+}

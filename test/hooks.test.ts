@@ -3,7 +3,11 @@ import test from "node:test";
 import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dispatchHook } from "../src/hooks/dispatch.js";
+import { dispatchHook, harnessForEvent } from "../src/hooks/dispatch.js";
+
+test("portable plugin hooks select compatible native event schemas", () => {
+  assert.equal(harnessForEvent("UserPromptSubmit"), "claude-code"); assert.equal(harnessForEvent("PostToolUseFailure"), "claude-code"); assert.equal(harnessForEvent("sessionStart"), "cursor");
+});
 
 test("Codex UserPromptSubmit returns native additional context", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-codex-hook-"));

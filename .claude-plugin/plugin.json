@@ -1,0 +1,11 @@
+{
+  "name": "gauntlet",
+  "version": "1.0.0",
+  "description": "Lightweight workflow control and verification for coding agents",
+  "author": {
+    "name": "Pixeless001",
+    "email": "mcwitherx@gmail.com"
+  },
+  "repository": "https://github.com/Pixeless001/Gauntlet",
+  "license": "MIT"
+}
