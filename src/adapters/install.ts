@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { HarnessAdapter, HarnessName } from "./types.js";
@@ -56,9 +56,14 @@ async function readConfig(path: string): Promise<JsonObject> {
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return {}; throw new Error(`Cannot safely update invalid JSON configuration: ${path}`, { cause: error }); }
 }
 
+async function writeConfig(path: string, config: JsonObject): Promise<void> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 }); const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 }); await rename(temporary, path);
+}
+
 export async function install(cwd: string, name: HarnessName, dryRun = false): Promise<string> {
   const target = join(cwd, adapters[name].configurationPath), config = merge(await readConfig(target), name);
-  if (!dryRun) { await mkdir(dirname(target), { recursive: true }); await writeFile(target, `${JSON.stringify(config, null, 2)}\n`); }
+  if (!dryRun) await writeConfig(target, config);
   return target;
 }
 
@@ -67,7 +72,15 @@ export async function uninstall(cwd: string, name: HarnessName, dryRun = false):
   try {
     await access(target); const config = removeDefinitions(await readConfig(target));
     const hooks = config.hooks as Record<string, unknown> | undefined;
-    if (!dryRun) { if (Object.keys(config).length === 1 && hooks && !Object.keys(hooks).length) await rm(target); else await writeFile(target, `${JSON.stringify(config, null, 2)}\n`); }
+    if (!dryRun) { if (Object.keys(config).length === 1 && hooks && !Object.keys(hooks).length) await rm(target); else await writeConfig(target, config); }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   return target;
+}
+
+export async function installationStatus(cwd: string): Promise<Record<HarnessName, { path: string; installed: boolean }>> {
+  return Object.fromEntries(await Promise.all(Object.entries(adapters).map(async ([name, value]) => {
+    const path = join(cwd, value.configurationPath); let installed = false;
+    try { installed = (await readFile(path, "utf8")).includes(marker); } catch { /* not installed */ }
+    return [name, { path, installed }];
+  }))) as Record<HarnessName, { path: string; installed: boolean }>;
 }

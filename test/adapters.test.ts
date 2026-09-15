@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { install, uninstall } from "../src/adapters/install.js";
+import { install, installationStatus, uninstall } from "../src/adapters/install.js";
 import { codexAdapter } from "../src/adapters/codex/index.js";
 import { claudeCodeAdapter } from "../src/adapters/claude-code/index.js";
 import { cursorAdapter } from "../src/adapters/cursor/index.js";
@@ -58,4 +58,13 @@ test("native installation preserves unrelated Claude Code settings and hooks", a
 test("Cursor installation uses its native lower-camel event schema", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-cursor-"));
   try { const target = await install(cwd, "cursor"); const config = JSON.parse(await readFile(target, "utf8")); assert.equal(config.version, 1); assert.ok(config.hooks.sessionStart); assert.equal(config.hooks.stop[0].loop_limit, 1); } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("installation creates each native configuration directory and reports exact status", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-hosts-"));
+  try {
+    await Promise.all([install(cwd, "codex"), install(cwd, "claude-code"), install(cwd, "cursor")]); const status = await installationStatus(cwd);
+    assert.equal(status.codex.path, join(cwd, ".codex/hooks.json")); assert.equal(status["claude-code"].path, join(cwd, ".claude/settings.json")); assert.equal(status.cursor.path, join(cwd, ".cursor/hooks.json"));
+    assert.equal(Object.values(status).every((item) => item.installed), true);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });

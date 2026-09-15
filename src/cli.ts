@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import pc from "picocolors";
 import { detectRepository } from "./repo/detect.js";
-import { install, uninstall } from "./adapters/install.js";
+import { install, installationStatus, uninstall } from "./adapters/install.js";
 import { harnessNameSchema } from "./adapters/types.js";
 import { GauntletEngine } from "./core/engine.js";
 import { formatSummary } from "./reporting/summary.js";
@@ -16,7 +16,7 @@ const harness = harnessNameSchema.parse(option("--harness") ?? "codex");
 async function main() {
   if (command === "init" || command === "install") console.log(`${args.includes("--dry-run") ? "Would install" : "Installed"} ${harness}: ${await install(cwd, harness, args.includes("--dry-run"))}`);
   else if (command === "uninstall") console.log(`${args.includes("--dry-run") ? "Would remove" : "Removed"} ${await uninstall(cwd, harness, args.includes("--dry-run"))}`);
-  else if (command === "doctor") console.log(JSON.stringify(await detectRepository(cwd), null, 2));
+  else if (command === "doctor") console.log(JSON.stringify({ repository: await detectRepository(cwd), adapters: await installationStatus(cwd) }, null, 2));
   else if (command === "eval") { const results = runBuiltInEvals(); await saveEvalRun(cwd, results); console.log(JSON.stringify({ passed: results.every((item) => item.passed), cases: results }, null, 2)); if (results.some((item) => !item.passed)) process.exitCode = 1; }
   else if (command === "start") { const intent = args.join(" "); if (!intent) throw new Error("Usage: gauntlet start <task intent>"); const result = await new GauntletEngine(cwd).start(intent); if (result.clarification) console.log(`CLARIFICATION REQUIRED\n${result.clarification}\n`); console.log(result.injection); console.log(`\nTask: ${result.state.id}`); }
   else if (command === "activity") { const id = args[0], json = args[1]; if (!id || !json) throw new Error("Usage: gauntlet activity <task-id> '<json>'"); const result = await new GauntletEngine(cwd).activity(id, activitySchema.parse(JSON.parse(json))); if (result.continuation) console.log(JSON.stringify({ type: "compaction", continuation: result.continuation }, null, 2)); }
