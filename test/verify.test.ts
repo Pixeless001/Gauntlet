@@ -28,6 +28,13 @@ test("verification targets related tests for known runners and falls back for br
   assert.equal(selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }], ["src/authz.test.ts"]).checks[0]?.id, "repository-tests");
 });
 
+test("verification uses structural tested-by edges before filename fallback", () => {
+  const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], testRunner: "vitest" as const, commands: [{ name: "test", command: "npm", args: ["run", "test"] }] };
+  const structural = { version: 1 as const, head: null, files: { "src/session.ts": { path: "src/session.ts", imports: [], exports: ["refresh"], symbols: ["refresh"], tests: ["test/concurrency.test.ts"] } }, dependents: {} };
+  const plan = selectVerification(profile, [{ path: "src/session.ts", added: 1, removed: 0 }], ["src/session.ts", "test/concurrency.test.ts"], structural);
+  assert.equal(plan.checks[0]?.id, "impacted-tests"); assert.equal(plan.checks[0]?.args.at(-1), "test/concurrency.test.ts");
+});
+
 test("test integrity compares against task-start assertions, not HEAD", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-integrity-")), path = join(cwd, "client.test.ts");
   try {

@@ -26,6 +26,7 @@ import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/
 import { initialUncertainty } from "../control/uncertainty.js";
 import { selectInterventions } from "../control/selector.js";
 import { observeExecution } from "../execution-state/runtime.js";
+import { buildStructuralIndex } from "../intelligence/index.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -98,7 +99,9 @@ export class GauntletEngine {
       state.conventionMetrics.architectureBypasses = state.findings.filter((item) => item.code === "convention-architecture-bypass").length;
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
-    const plan = selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files), results = await runVerification(this.cwd, plan, undefined, state.id);
+    const structuralTargets = [...new Set([...changes.map((item) => item.path), ...(state.baseline.index?.files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 160) ?? [])])];
+    const structural = state.baseline.index && changes.length ? await buildStructuralIndex(this.cwd, state.baseline.index, structuralTargets, 160) : undefined;
+    const plan = selectVerification(await detectRepository(this.cwd), changes, state.baseline.index?.files, structural), results = await runVerification(this.cwd, plan, undefined, state.id);
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
     if (risk.level === "elevated" && newTest && testCheck && state.baseline.head && this.options.preChangeEnvironment) {
       const candidateTests = changes.filter((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path)).map((change) => change.path), before = await this.options.preChangeEnvironment(state.baseline.head, candidateTests), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
