@@ -6,19 +6,22 @@ import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
 import { evidenceMap, type EvidenceKind } from "../verify/evidence-selector.js";
 
-export function observeExecution(state: TaskState, activity: TaskActivity): { repeatedFailure: boolean; causeValidated: boolean } {
+export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite"; causeValidated: boolean } {
   const execution = state.session?.execution;
-  if (!execution) return { repeatedFailure: false, causeValidated: false };
-  if (activity.kind === "message") return { repeatedFailure: false, causeValidated: false };
+  if (!execution) return { investigate: false, causeValidated: false };
+  if (activity.kind === "message") return { investigate: false, causeValidated: false };
   const type: ExecutionEventType = activity.kind === "command" && activity.outcome === "fail" ? "failure" : activity.kind;
   execution.events.push({ index: execution.nextEvent++, type, ...(activity.target ? { target: activity.target } : {}), ...(activity.outcome ? { outcome: activity.outcome } : {}), ...(activity.evidenceRef ? { evidenceRef: activity.evidenceRef } : {}) });
   if (execution.events.length > 512) execution.events.splice(0, execution.events.length - 512);
   const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target!);
   const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
+  const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && execution.events.filter((item) => item.type === "file_write" && item.target === activity.target).length >= 3);
+  const investigate = repeatedFailure || repeatedRewrite, trigger = repeatedFailure ? "repeated_failure" as const : repeatedRewrite ? "repeated_rewrite" as const : undefined;
   const causeValidated = activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
   const approachRejected = activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
-  if (repeatedFailure && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
-    activate(execution, checkpoint("investigation", `Investigate repeated failure: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1));
+  updateUncertainty(state, activity);
+  if (investigate && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
+    activate(execution, checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1));
   }
   if (causeValidated) {
     const current = active(execution.checkpoints, execution.activeCheckpointId); if (current) { current.status = "validated"; current.resolves = ["cause"]; if (activity.evidenceRef) current.evidenceRefs.push(activity.evidenceRef); }
@@ -33,7 +36,19 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { re
       execution.activeCheckpointId = replacement.id;
     }
   }
-  return { repeatedFailure, causeValidated };
+  return { investigate, ...(trigger ? { trigger } : {}), causeValidated };
+}
+
+function updateUncertainty(state: TaskState, activity: TaskActivity): void {
+  const uncertainty = state.session?.uncertainty, target = activity.target?.toLowerCase() ?? ""; if (!uncertainty) return;
+  if (activity.kind === "file_write") {
+    if (/\.(?:css|scss|sass|less|tsx|jsx|html)$/.test(target)) uncertainty.visual = "open";
+    if (/(?:^|\/)(?:migrations?|schema|auth|security|permissions?)(?:\/|\.|$)/.test(target)) { uncertainty.repoFit = "open"; uncertainty.regression = "open"; }
+    if (/(?:^|\/)(?:index\.[cm]?[jt]s|package\.json)$/.test(target)) uncertainty.regression = "open";
+    uncertainty.scope = "open";
+  }
+  if (activity.kind === "test_result" && activity.outcome === "pass") { uncertainty.behavior = uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved"; uncertainty.regression = uncertainty.regression === "irrelevant" ? "irrelevant" : "resolved"; }
+  if ((activity.kind === "test_result" || activity.kind === "decision_signal") && activity.outcome === "pass" && /(?:profile|benchmark|performance|latency|throughput)/.test(target)) uncertainty.performance = uncertainty.performance === "irrelevant" ? "irrelevant" : "resolved";
 }
 
 export function recordVerification(state: TaskState, passed: boolean, evidenceRefs: string[], supplied: EvidenceKind[] = []): void {

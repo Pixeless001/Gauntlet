@@ -74,11 +74,10 @@ export class GauntletEngine {
       if (value.session && search) { const observation = { ...search, version: value.baseline.index?.head ?? "filesystem", matches: [] }, searches = value.session.searches ?? []; if (repeatedSearch(searches, observation)) value.session.repeatSearchesDetected = (value.session.repeatSearchesDetected ?? 0) + 1; else value.session.searches = [observation, ...searches].slice(0, 32); }
       if (value.session) {
         const transition = observeExecution(value, activity);
-        const repeatedFailure = transition.repeatedFailure;
-        if (repeatedFailure && value.session.uncertainty) {
+        if (transition.investigate && value.session.uncertainty) {
           value.session.uncertainty.cause = "open";
           const candidate = { id: "skill:investigate", skill: "investigate" as const, uncertainty: "cause" as const, level: 3 as const, cost: "low" as const, available: true };
-          const trace = selectInterventions({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: "repeated_failure" });
+          const trace = selectInterventions({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: transition.trigger ?? "execution_state" });
           if (trace.selected.includes(candidate.id)) {
             trace.changedState = true;
             value.session.activeSkills = ["investigate"];

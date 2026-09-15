@@ -92,6 +92,18 @@ test("workflow transitions do not consume the compaction budget", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("execution signals update workflow and risk uncertainty", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-signals-"));
+  try {
+    await writeFile(join(cwd, "component.tsx"), "export const Component = () => null;\n"); const engine = new GauntletEngine(cwd); await engine.start("Change component.tsx", "signals");
+    await engine.activity("signals", { kind: "file_write", target: "src/migrations/access.ts", outcome: "pass", outputBytes: 0 });
+    await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 }); await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
+    const result = await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
+    assert.equal(result.state.session?.uncertainty?.visual, "open"); assert.equal(result.state.session?.uncertainty?.repoFit, "open"); assert.equal(result.state.session?.uncertainty?.regression, "open");
+    assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "repeated_rewrite"); assert.deepEqual(result.state.session?.activeSkills, ["investigate"]);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("elevated new tests reject weak counterfactual evidence when a provider is available", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
   try {
