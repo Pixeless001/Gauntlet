@@ -1,4 +1,5 @@
 import type { TaskState } from "./task-state.js";
+import { reconstruct } from "../execution-state/reconstruct.js";
 
 export interface CompactionDecision { compact: boolean; reasons: string[] }
 export interface ContinuationRecord { task: string; acceptanceCriteria: string[]; constraints: string[]; repoConstraints: string[]; workingSet: string[]; unresolved: string[]; failedApproaches: string[] }
@@ -15,13 +16,14 @@ export function shouldCompact(state: TaskState): CompactionDecision {
 }
 
 export function compact(state: TaskState): ContinuationRecord {
+  const active = reconstruct(state);
   return {
-    task: state.contract.intent,
-    acceptanceCriteria: [...state.contract.acceptanceCriteria],
-    constraints: [...state.contract.constraints],
+    task: active.task,
+    acceptanceCriteria: active.acceptanceCriteria,
+    constraints: active.constraints,
     repoConstraints: (state.conventions ?? []).filter((fact) => fact.strength === "strong").slice(0, 3).map((fact) => `${fact.id}: ${fact.value}`),
-    workingSet: [...state.workingSet],
-    unresolved: state.findings.filter((item) => item.blocking ?? item.severity !== "info").map((item) => item.message),
-    failedApproaches: state.session?.failedApproaches.length ? [...state.session.failedApproaches] : [...new Set(state.activities.filter((item) => item.outcome === "fail").map((item) => item.target).filter((x): x is string => Boolean(x)))],
+    workingSet: active.relevantFiles.length ? active.relevantFiles : [...state.workingSet],
+    unresolved: [...active.open, ...state.findings.filter((item) => item.blocking ?? item.severity !== "info").map((item) => item.message)],
+    failedApproaches: state.session?.execution ? (active.rejectedWarning ? [active.rejectedWarning] : []) : state.session?.failedApproaches.length ? [...state.session.failedApproaches] : [...new Set(state.activities.filter((item) => item.outcome === "fail").map((item) => item.target).filter((x): x is string => Boolean(x)))],
   };
 }

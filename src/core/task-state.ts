@@ -5,6 +5,9 @@ import type { RepoIndex } from "../repo/index.js";
 import type { InterventionBudget } from "./policy.js";
 import type { SkillName } from "./skills.js";
 import type { SearchObservation } from "../context/governor.js";
+import type { UncertaintyState } from "../control/uncertainty.js";
+import type { SelectionTrace } from "../control/selector.js";
+import type { ExecutionCheckpoint } from "../execution-state/checkpoints.js";
 
 export interface FileDelta { path: string; added: number; removed: number }
 export interface TestSignature { assertions: string[]; skipped: number }
@@ -47,5 +50,9 @@ export interface TaskState {
     repeatReadsDetected: number;
     searches?: SearchObservation[];
     repeatSearchesDetected?: number;
+    uncertainty?: UncertaintyState;
+    selectionTraces?: SelectionTrace[];
+    interventionsUsed?: number;
+    execution?: { activeCheckpointId: string; checkpoints: ExecutionCheckpoint[] };
   };
 }

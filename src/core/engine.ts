@@ -23,6 +23,8 @@ import { fingerprintFiles } from "../repo/index.js";
 import { normalizeSearch, repeatedSearch } from "../context/governor.js";
 import { LocalExecutionEnvironment } from "../execution/local.js";
 import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/counterfactual.js";
+import { initialUncertainty } from "../control/uncertainty.js";
+import { selectInterventions } from "../control/selector.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
@@ -45,7 +47,8 @@ export class GauntletEngine {
     const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
     const risk = assessRisk(contract);
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: routeSkills(contract, "start", risk.level), lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0 } };
+    const activeSkills = routeSkills(contract, "start", risk.level), uncertainty = initialUncertainty(contract, risk.level), rootId = randomUUID();
+    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [], interventionsUsed: activeSkills.length, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }] } } };
     await this.store.saveTask(state);
     return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
@@ -63,6 +66,20 @@ export class GauntletEngine {
       if (value.session && activity.kind === "file_write" && activity.target) value.session.observations = value.session.observations.filter((item) => item.path !== activity.target);
       const search = activity.kind === "command" && activity.target ? normalizeSearch(activity.target) : null;
       if (value.session && search) { const observation = { ...search, version: value.baseline.index?.head ?? "filesystem", matches: [] }, searches = value.session.searches ?? []; if (repeatedSearch(searches, observation)) value.session.repeatSearchesDetected = (value.session.repeatSearchesDetected ?? 0) + 1; else value.session.searches = [observation, ...searches].slice(0, 32); }
+      if (value.session) {
+        const failures = value.activities.filter((item) => item.outcome === "fail" && item.target).map((item) => item.target!);
+        const repeatedFailure = failures.some((target) => failures.filter((item) => item === target).length >= 2);
+        if (repeatedFailure && value.session.uncertainty) {
+          value.session.uncertainty.cause = "open";
+          const candidate = { id: "skill:investigate", skill: "investigate" as const, uncertainty: "cause" as const, level: 3 as const, cost: "low" as const, available: true };
+          const trace = selectInterventions({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: "repeated_failure" });
+          value.session.selectionTraces = [...(value.session.selectionTraces ?? []), trace].slice(-64);
+          if (trace.selected.includes(candidate.id)) {
+            value.session.activeSkills = ["investigate"];
+            value.session.interventionsUsed = (value.session.interventionsUsed ?? 0) + 1;
+          }
+        }
+      }
     });
     const decision = shouldCompact(state), continuation = decision.compact ? compact(state) : null;
     if (continuation) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });

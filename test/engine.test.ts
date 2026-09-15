@@ -56,6 +56,18 @@ test("engine tracks repeated unchanged reads and invalidates on writes", async (
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("engine activates investigation after a repeated unresolved failure", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-transition-"));
+  try {
+    await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd);
+    await engine.start("Implement behavior in source.ts", "transition");
+    await engine.activity("transition", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
+    const result = await engine.activity("transition", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
+    assert.deepEqual(result.state.session?.activeSkills, ["investigate"]);
+    assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "repeated_failure");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("elevated new tests reject weak counterfactual evidence when a provider is available", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
   try {

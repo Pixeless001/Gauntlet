@@ -5,6 +5,8 @@ import type { TaskState } from "../core/task-state.js";
 import type { TaskMeasurement } from "../core/measure.js";
 import { MAX_STATE_BYTES } from "../core/policy.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../core/policy.js";
+import { initialUncertainty } from "../control/uncertainty.js";
+import { assessRisk } from "../core/risk.js";
 
 export class StateStore {
   readonly directory: string;
@@ -23,7 +25,7 @@ export class StateStore {
     const state = JSON.parse(content) as TaskState;
     if (state.version !== 1 || state.id !== id || typeof state.repository !== "string" || resolve(state.repository) !== this.repository || !Array.isArray(state.activities)) throw new Error("Invalid Gauntlet task state");
     if (state.session) state.session = {
-      currentApproach: state.session.currentApproach ?? "", decisions: state.session.decisions ?? [], resolvedIssues: state.session.resolvedIssues ?? [], unresolvedIssues: state.session.unresolvedIssues ?? [], failedApproaches: state.session.failedApproaches ?? [], activeSkills: state.session.activeSkills ?? [], lastCompactedActivity: state.session.lastCompactedActivity ?? 0, compactions: state.session.compactions ?? 0, budget: state.session.budget ?? { ...DEFAULT_INTERVENTION_BUDGET }, observations: state.session.observations ?? [], repeatReadsDetected: state.session.repeatReadsDetected ?? 0, searches: state.session.searches ?? [], repeatSearchesDetected: state.session.repeatSearchesDetected ?? 0,
+      currentApproach: state.session.currentApproach ?? "", decisions: state.session.decisions ?? [], resolvedIssues: state.session.resolvedIssues ?? [], unresolvedIssues: state.session.unresolvedIssues ?? [], failedApproaches: state.session.failedApproaches ?? [], activeSkills: state.session.activeSkills ?? [], lastCompactedActivity: state.session.lastCompactedActivity ?? 0, compactions: state.session.compactions ?? 0, budget: state.session.budget ?? { ...DEFAULT_INTERVENTION_BUDGET }, observations: state.session.observations ?? [], repeatReadsDetected: state.session.repeatReadsDetected ?? 0, searches: state.session.searches ?? [], repeatSearchesDetected: state.session.repeatSearchesDetected ?? 0, uncertainty: state.session.uncertainty ?? initialUncertainty(state.contract, assessRisk(state.contract).level), selectionTraces: state.session.selectionTraces ?? [], interventionsUsed: state.session.interventionsUsed ?? state.session.activeSkills?.length ?? 0, ...(state.session.execution ? { execution: state.session.execution } : {}),
     };
     return state;
   }
