@@ -15,6 +15,17 @@ test("package knowledge stops at installed types before external docs", async ()
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("package knowledge reads modern exports but rejects escaping metadata paths", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-knowledge-")); let external = 0;
+  try {
+    const safe = join(cwd, "node_modules", "safe"), escaped = join(cwd, "node_modules", "escaped"); await mkdir(safe, { recursive: true }); await mkdir(escaped, { recursive: true });
+    await writeFile(join(safe, "package.json"), JSON.stringify({ version: "2.0.0", exports: { ".": { types: "./dist/index.d.ts" } } })); await mkdir(join(safe, "dist")); await writeFile(join(safe, "dist", "index.d.ts"), "export function modern(): void;\n");
+    await writeFile(join(escaped, "package.json"), JSON.stringify({ version: "1.0.0", types: "../../../secret.d.ts" })); await writeFile(join(cwd, "secret.d.ts"), "export function secret(): void;\n");
+    assert.equal((await resolvePackageKnowledge(cwd, "safe", "modern"))?.source, "installed_types");
+    assert.equal((await resolvePackageKnowledge(cwd, "escaped", "secret", { externalDocs: async () => { external += 1; return "authoritative"; } }))?.source, "external_docs"); assert.equal(external, 1);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("evidence selection asks only for unresolved unsupported uncertainty", () => {
   const state = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
   assert.equal(remainingEvidence(state, ["reproduction", "test", "diff", "graph", "repository_rule", "contract"]).some((item) => item.uncertainty === "cause"), false);
