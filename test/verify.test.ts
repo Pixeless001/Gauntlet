@@ -36,3 +36,8 @@ test("summary is compact and factual", () => {
   const output = formatSummary({ version: 1, taskId: "x", startedAt: "", finishedAt: "", durationMs: 1_000, attempts: 1, files: 2, added: 3, removed: 1, testsPassed: 1, checksRun: 2, clean: true, verified: true, firstPass: true, findings: [] }, false);
   assert.match(output, /✓ CLEAN/); assert.match(output, /LoC\s+\+3\/-1/);
 });
+
+test("failed completion reports actionable evidence and its raw reference", () => {
+  const output = formatSummary({ version: 1, taskId: "x", startedAt: "", finishedAt: "", durationMs: 1, attempts: 1, files: 1, added: 1, removed: 0, testsPassed: 0, checksRun: 1, clean: false, verified: false, firstPass: false, findings: ["tests-skipped: skipped count increased (a.test.ts, 0 → 1)"], evidence: [{ id: "impacted-tests", status: "fail", summary: "npm test: failed (1)\nFAIL a.test.ts", reference: ".gauntlet/runs/x.log" }] }, false);
+  assert.match(output, /tests-skipped/); assert.match(output, /FAIL a\.test\.ts/); assert.match(output, /Full result/);
+});

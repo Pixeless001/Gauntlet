@@ -4,7 +4,7 @@ import { join } from "node:path";
 async function exists(path: string) { try { await access(path); return true; } catch { return false; } }
 
 export interface ToolCommand { name: string; command: string; args: string[] }
-export interface RepoProfile { packageManager: string | null; language: string[]; commands: ToolCommand[]; harnesses: string[]; testRunner?: "node" | "vitest" | "jest" | "pytest" }
+export interface RepoProfile { packageManager: string | null; language: string[]; dependencies?: string[]; commands: ToolCommand[]; harnesses: string[]; testRunner?: "node" | "vitest" | "jest" | "pytest" }
 
 export async function detectDependencies(cwd: string): Promise<string[]> {
   try {
@@ -14,6 +14,7 @@ export async function detectDependencies(cwd: string): Promise<string[]> {
 }
 
 export async function detectRepository(cwd: string): Promise<RepoProfile> {
+  const dependencies = await detectDependencies(cwd);
   const packageManager = await exists(join(cwd, "pnpm-lock.yaml")) ? "pnpm" : await exists(join(cwd, "yarn.lock")) ? "yarn" : await exists(join(cwd, "package-lock.json")) ? "npm" : await exists(join(cwd, "uv.lock")) ? "uv" : await exists(join(cwd, "poetry.lock")) ? "poetry" : await exists(join(cwd, "Cargo.lock")) ? "cargo" : null;
   const languages: string[] = [];
   if (await exists(join(cwd, "tsconfig.json"))) languages.push("typescript");
@@ -41,5 +42,5 @@ export async function detectRepository(cwd: string): Promise<RepoProfile> {
   if (await exists(join(cwd, "Gemfile"))) { languages.push("ruby"); commands.push({ name: "test", command: "bundle", args: ["exec", "rake", "test"] }); }
   if (await exists(join(cwd, "gradlew"))) { languages.push("java"); commands.push({ name: "test", command: join(cwd, "gradlew"), args: ["test"] }); }
   if ((await readdir(cwd)).some((name) => /\.(?:sln|csproj)$/.test(name))) { languages.push("dotnet"); commands.push({ name: "test", command: "dotnet", args: ["test"] }); }
-  return { packageManager, language: languages, commands, harnesses, ...(testRunner ? { testRunner } : {}) };
+  return { packageManager, language: languages, dependencies, commands, harnesses, ...(testRunner ? { testRunner } : {}) };
 }
