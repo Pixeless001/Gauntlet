@@ -32,6 +32,12 @@ test("test integrity compares against task-start assertions, not HEAD", async ()
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("test integrity rejects newly added skipped tests", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-integrity-"));
+  try { await writeFile(join(cwd, "new.test.ts"), "test.skip('missing', () => {});\n"); assert.equal((await inspectTestIntegrity(cwd, {}, [{ path: "new.test.ts", added: 1, removed: 0 }]))[0]?.code, "tests-skipped"); }
+  finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("summary is compact and factual", () => {
   const output = formatSummary({ version: 1, taskId: "x", startedAt: "", finishedAt: "", durationMs: 1_000, attempts: 1, files: 2, added: 3, removed: 1, testsPassed: 1, checksRun: 2, clean: true, verified: true, firstPass: true, findings: [] }, false);
   assert.match(output, /✓ CLEAN/); assert.match(output, /LoC\s+\+3\/-1/);
