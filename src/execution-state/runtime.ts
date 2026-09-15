@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { TaskActivity } from "../core/events.js";
 import type { TaskState } from "../core/task-state.js";
+import { rejectBranch } from "./checkpoints.js";
 import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
 
@@ -14,12 +15,22 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { re
   const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target!);
   const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
   const causeValidated = activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
+  const approachRejected = activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
   if (repeatedFailure && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
     activate(execution, checkpoint("investigation", `Investigate repeated failure: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1));
   }
   if (causeValidated) {
     const current = active(execution.checkpoints, execution.activeCheckpointId); if (current) { current.status = "validated"; current.resolves = ["cause"]; if (activity.evidenceRef) current.evidenceRefs.push(activity.evidenceRef); }
     activate(execution, checkpoint("implementation", activity.target!.slice("cause:".length).trim(), execution.activeCheckpointId, execution.nextEvent - 1));
+  }
+  if (approachRejected) {
+    const current = active(execution.checkpoints, execution.activeCheckpointId);
+    if (current) {
+      const reason = activity.target!.slice("reject:".length).trim();
+      const replacement = checkpoint(current.kind === "investigation" ? "investigation" : "implementation", "Choose a replacement approach", current.parentId ?? execution.checkpoints[0]!.id, execution.nextEvent - 1);
+      execution.checkpoints = rejectBranch(execution.checkpoints, current.id, replacement, reason);
+      execution.activeCheckpointId = replacement.id;
+    }
   }
   return { repeatedFailure, causeValidated };
 }
