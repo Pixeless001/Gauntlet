@@ -4,6 +4,7 @@ import type { VerificationPlan } from "./types.js";
 import { relatedTestCandidates } from "../repo/context.js";
 
 export function selectVerification(profile: RepoProfile, changes: FileDelta[], files: string[] = []): VerificationPlan {
+  if (changes.length > 0 && changes.every((change) => /(?:\.md|\.txt|\.rst)$/i.test(change.path))) return { checks: [{ id: "diff-check", reason: "Documentation-only changes require only a cheap patch integrity check", command: "git", args: ["diff", "--check"] }], rationale: ["Skipped build and behavioral suites for documentation-only changes."] };
   const checks = profile.commands.filter((tool) => tool.name !== "test").map((tool) => ({ id: tool.name, reason: `${tool.name} is declared by the repository`, command: tool.command, args: tool.args }));
   const test = profile.commands.find((tool) => tool.name === "test");
   if (test && changes.length) {

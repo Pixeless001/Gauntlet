@@ -14,6 +14,11 @@ test("verification uses declared tools and stops without changes", () => {
   assert.deepEqual(selectVerification(profile, [{ path: "a.ts", added: 1, removed: 0 }]).checks.map((item) => item.id), ["typecheck", "repository-tests"]);
 });
 
+test("documentation-only changes avoid build and behavioral suites", () => {
+  const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], commands: [{ name: "typecheck", command: "npm", args: ["run", "typecheck"] }, { name: "test", command: "npm", args: ["test"] }] };
+  const plan = selectVerification(profile, [{ path: "README.md", added: 1, removed: 1 }]); assert.deepEqual(plan.checks.map((item) => item.id), ["diff-check"]); assert.match(plan.rationale[0]!, /Skipped/);
+});
+
 test("verification targets related tests for known runners and falls back for broad changes", () => {
   const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], testRunner: "vitest" as const, commands: [{ name: "test", command: "npm", args: ["run", "test"] }] };
   const targeted = selectVerification(profile, [{ path: "src/auth.ts", added: 1, removed: 0 }], ["src/auth.ts", "src/auth.test.ts"]);
