@@ -5,8 +5,9 @@ import { activePath, rejectBranch } from "./checkpoints.js";
 import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
 import { hasSufficientEvidence, type EvidenceKind } from "../verify/evidence-selector.js";
+import { assessProgress, type ProgressStatus } from "./progress.js";
 
-export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite"; causeValidated: boolean } {
+export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite" | "regressed"; causeValidated: boolean; progress?: ProgressStatus } {
   const execution = state.session?.execution;
   if (!execution) return { investigate: false, causeValidated: false };
   if (activity.kind === "message") return { investigate: false, causeValidated: false };
@@ -16,10 +17,12 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
   const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target!);
   const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
   const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && execution.events.filter((item) => item.type === "file_write" && item.target === activity.target).length >= 3);
-  const investigate = repeatedFailure || repeatedRewrite, trigger = repeatedFailure ? "repeated_failure" as const : repeatedRewrite ? "repeated_rewrite" as const : undefined;
   const causeValidated = activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
   const approachRejected = activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
   updateUncertainty(state, activity);
+  const progress = assessProgress({ events: execution.events, checkpoints: execution.checkpoints, activeCheckpointId: execution.activeCheckpointId, uncertainty: state.session!.uncertainty! });
+  const investigate = progress.status !== "PROGRESS";
+  const trigger = progress.status === "REGRESSED" ? "regressed" as const : repeatedFailure ? "repeated_failure" as const : repeatedRewrite ? "repeated_rewrite" as const : undefined;
   if (investigate && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
     activate(execution, checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1));
   }
@@ -36,7 +39,7 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
       execution.activeCheckpointId = replacement.id;
     }
   }
-  return { investigate, ...(trigger ? { trigger } : {}), causeValidated };
+  return { investigate, ...(trigger ? { trigger } : {}), causeValidated, progress: progress.status };
 }
 
 function updateUncertainty(state: TaskState, activity: TaskActivity): void {
