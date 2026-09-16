@@ -1,0 +1,5240 @@
+GAUNTLET — MASSIVE ARCHITECTURE + RESEARCH + EXPERIENCE-COMPILER HANDOFF
+Consolidated engineering handoff
+Status: target architecture; extend the current Gauntlet, do not rewrite from scratch
+
+======================================================================
+0. EXECUTIVE MANDATE
+======================================================================
+
+Gauntlet should become the ultimate lightweight developer-intelligence runtime around coding agents.
+
+It should have access to:
+- deep workflow knowledge,
+- strong implementation discipline,
+- repository intelligence,
+- code-structure understanding,
+- technical documentation,
+- expert domain references,
+- long-horizon execution memory,
+- verification strategies,
+- browser evidence,
+- optional delegation,
+- and a growing body of validated experience.
+
+But almost none of that should be active on an ordinary task.
+
+The defining target is:
+
+    BIG CAPABILITY SURFACE
+    +
+    SMALL ACTIVE WORKING SET
+
+Or more simply:
+
+    Know a lot. Load a little.
+
+And:
+
+    Put sophistication in selection, not in the default workflow.
+
+The product should feel smaller than the coding agent it improves.
+
+The normal experience must remain:
+
+    install Gauntlet
+    use coding agent normally
+    Gauntlet quietly improves context / behavior / verification
+    clean result
+    verified result
+    done
+
+Gauntlet should not become:
+- another coding agent,
+- another IDE,
+- another CI platform,
+- a giant RAG stack,
+- a vector-memory product,
+- a mandatory methodology,
+- a dashboard-first governance system,
+- a multi-agent swarm framework,
+- or a background daemon constantly watching the repository.
+
+The core product value is:
+
+    Gauntlet decides what additional engineering intelligence is worth using,
+    when it is worth using,
+    how deeply it should activate,
+    what evidence is already enough,
+    and when to stop.
+
+
+======================================================================
+1. REFERENCE-NAME FIREWALL
+======================================================================
+
+The following projects, papers, and systems are research inputs and provenance only:
+
+- Ponytail
+- Superpowers
+- Context7
+- Context Mode
+- OpenViking
+- Graphify
+- Ruflo
+- Learn Claude Code
+- OpenCode
+- gstack
+- Agent Skills
+- Agency Agents
+- RTK
+- tgrep
+- Gap-Trap
+- Deep Agents
+- Browser Use
+- agent-browser
+- shadcn
+- MAGE
+- MESA
+- Memora
+- CodePlan
+- RPG-Encoder
+- Change2Task
+- Magentic-One
+- WikiSkill
+- MARS
+- SWE-Lancer
+- CodeMender
+- Anthropic context-engineering research
+- Anthropic tool-design research
+- Google coding-agent research
+- OpenAI harness and eval research
+
+These names may appear in:
+- research notes,
+- benchmark provenance,
+- internal design docs,
+- handoffs,
+- eval documentation.
+
+Do NOT copy their branded terminology into:
+- Gauntlet CLI commands,
+- public APIs,
+- internal module names unless literally integrating,
+- skill names,
+- feature names,
+- user-facing docs,
+- telemetry names,
+- repository folders intended as product concepts.
+
+Do not create public Gauntlet features literally named after reference projects or their branded concepts.
+
+Instead:
+- identify the mechanism,
+- identify the engineering problem it solves,
+- implement the smallest Gauntlet-native version,
+- make activation conditional,
+- add an eval,
+- keep it only if it improves outcomes.
+
+Research adoption rule:
+
+    paper / repo
+        ↓
+    extract mechanism
+        ↓
+    identify problem
+        ↓
+    find cheapest Gauntlet-native form
+        ↓
+    make activation conditional
+        ↓
+    evaluate
+        ↓
+    keep / tighten / remove
+
+Never:
+
+    popular project
+        ↓
+    copy whole subsystem
+
+
+======================================================================
+2. PRODUCT IDENTITY
+======================================================================
+
+Gauntlet should evolve toward:
+
+    A lightweight engineering runtime that understands the task,
+    the repository,
+    the current execution state,
+    the available capabilities,
+    and the evidence required to finish cleanly.
+
+Another useful definition:
+
+    Gauntlet is an adaptive control plane that gives coding agents
+    the minimum additional intelligence needed to complete the current
+    task cleanly.
+
+And the strongest short framing remains:
+
+    Ponytail for the entire development workflow.
+
+Meaning:
+- Ponytail makes agents write less.
+- Gauntlet makes agents waste less.
+
+Waste includes:
+- unnecessary code,
+- unnecessary context,
+- unnecessary questions,
+- repeated failed approaches,
+- duplicate infrastructure,
+- avoidable docs lookups,
+- over-testing,
+- under-testing,
+- needless browser runs,
+- unnecessary multi-agent work,
+- overlong tool output,
+- redundant file reads,
+- avoidable repo rediscovery,
+- carrying dead execution history forward,
+- loading expert knowledge that does not affect the task,
+- and verifying low-risk work with high-cost machinery.
+
+
+======================================================================
+3. CORE ENGINEERING CONSTITUTION
+======================================================================
+
+The following four rules should be nearly universal and extremely compact.
+They should sit at the bottom of the hierarchy as Gauntlet’s small default engineering constitution.
+
+3.1 REUSE BEFORE BUILD
+
+Preferred ladder:
+
+    Does new code need to exist?
+    ↓
+    Equivalent capability already in repo?
+    ↓
+    Can owning implementation be modified directly?
+    ↓
+    Can language / stdlib / framework / platform solve it?
+    ↓
+    Can installed dependency solve it?
+    ↓
+    Is there a mature, reliable, secure OSS capability?
+    ↓
+    Is there a supported extension point?
+    ↓
+    Only then create custom infrastructure.
+
+Important nuance:
+- Prefer reliable, secure OSS over reinvention.
+- Prefer supported extension points over forks/custom replicas.
+- Do not add a dependency when the repository already has an adequate primitive.
+- Do not force external OSS when the existing local implementation is simpler and sufficient.
+- “Reuse” includes repo-native capability, not only external packages.
+
+3.2 MINIMUM SUFFICIENT SOLUTION
+
+Choose the simplest solution that:
+- satisfies the task,
+- preserves required behavior,
+- fits repository conventions,
+- handles the real risk,
+- and passes relevant evidence.
+
+Avoid:
+- speculative abstractions,
+- future-proofing without a requirement,
+- second implementations,
+- generic frameworks for one use case,
+- new APIs that no caller needs,
+- broad refactors hidden inside feature work.
+
+Stop when the acceptance criteria are met cleanly.
+
+3.3 PROVE VERSION-SENSITIVE ASSUMPTIONS
+
+Never guess an unfamiliar or version-sensitive API when cheap authoritative evidence can resolve it.
+
+Resolution ladder:
+
+    repo usage
+    ↓
+    installed types
+    ↓
+    installed source
+    ↓
+    package / lockfile version
+    ↓
+    local docs
+    ↓
+    official version-compatible docs
+    ↓
+    broader external search only if still necessary
+
+This does NOT mean “always query docs.”
+It means “do not rely on stale model memory when the machine can cheaply prove the current API.”
+
+3.4 EVIDENCE, NOT TEST VOLUME
+
+Write and run only the checks that provide meaningful confidence.
+
+Ask:
+
+    What meaningful uncertainty remains?
+    ↓
+    What is the cheapest evidence that can reduce it?
+    ↓
+    Run that.
+    ↓
+    Stop when more evidence is unlikely to change acceptance.
+
+Avoid:
+- redundant tests,
+- giant release gates for small edits,
+- always running the full suite,
+- adding tests that do not distinguish old behavior from new behavior,
+- “more tests = more confidence” thinking.
+
+
+======================================================================
+4. CORE PRODUCT PRINCIPLES
+======================================================================
+
+1. Know a lot. Load a little.
+2. Store richly. Index cheaply. Select dynamically. Expand reluctantly.
+3. Put sophistication in selection, not in the default workflow.
+4. Machine first. Model second.
+5. Memory for facts should be retrieved. Memory for work should be resumed.
+6. Preserve the valid execution path. Quarantine failed branches.
+7. Validate a boundary, shorten the horizon, then continue from the valid state.
+8. Experience may accumulate freely. Behavior must earn promotion.
+9. Rejected behavior changes are still useful knowledge.
+10. Context should add information, not merely relevance.
+11. Different evidence structures may be complementary; use the smallest useful combination.
+12. Repository understanding should evolve incrementally from real work.
+13. Impact should determine planning and verification depth.
+14. External documentation is escalation, not default context.
+15. The existence of a capability is not a reason to activate it.
+16. Progress means uncertainty or evidence improved, not merely that more code was written.
+17. Verification must prove both what changed and what must remain unchanged.
+18. Skills control behavior; references provide expert knowledge; repo facts provide local truth; execution state provides current-task truth; evidence determines completion.
+19. Discover before building.
+20. Observe before modifying.
+21. Existing debt may remain; new work should not quietly make it worse.
+22. If a rule matters enough to constrain the agent, make it machine-checkable when cheap.
+23. Verify before completion, but stop once enough evidence exists.
+24. No second agent unless measured evidence says it is worth the cost.
+25. Silence is a first-class successful behavior.
+26. Every major subsystem requires:
+    - a cheap path,
+    - an escalation trigger,
+    - a stop condition,
+    - and eval evidence that it earns its cost.
+27. Gauntlet can know far more than it ever shows the agent.
+
+
+======================================================================
+5. CURRENT ARCHITECTURE PROBLEM
+======================================================================
+
+The current Gauntlet direction contains several useful selectors:
+
+- initial skill routing,
+- dynamic intervention selection,
+- capability selection,
+- verification selection,
+- domain resolution,
+- context selection.
+
+Individually, these can all be smart.
+
+Collectively, they risk becoming:
+
+    five or six intelligent systems
+    that do not share one final activation decision.
+
+That creates:
+- redundant activation,
+- conflicting policies,
+- duplicated context,
+- unnecessary cost,
+- unclear responsibility.
+
+The next architectural priority is therefore not “add more features.”
+
+It is:
+
+    SPECIALIZED SUBSYSTEMS GENERATE CANDIDATES
+    ONE CONTROL PLANE DECIDES WHAT ACTUALLY ACTIVATES
+
+Subsystems still own specialized logic.
+
+Control owns:
+- competition,
+- deduplication,
+- dominance elimination,
+- budgeting,
+- activation,
+- deactivation,
+- escalation,
+- and final composition.
+
+
+======================================================================
+6. REVISED TOP-LEVEL ARCHITECTURE
+======================================================================
+
+Use the following conceptual planes:
+
+    ┌──────────────────────────────────────┐
+    │ CONTROL                              │
+    │ select / escalate / suppress         │
+    └──────────────────────────────────────┘
+                      │
+             remaining uncertainty
+                      │
+        ┌─────────────┼──────────────┐
+        │             │              │
+        ▼             ▼              ▼
+     WORKFLOW     EVIDENCE VIEWS   CAPABILITIES
+        │             │              │
+        │      ┌──────┼──────┐       │
+        │      │      │      │       │
+        │   EXEC     CODE   REPO   TECHNICAL
+        │   STATE    INTEL  FACTS   KNOWLEDGE
+        │      │      │      │       │
+        └──────┴──────┴──────┴───────┘
+                      │
+              CONTEXT GOVERNOR
+                      │
+                      ▼
+                    AGENT
+                      │
+                 observations
+                      │
+                      ▼
+                   CONTROL
+                      │
+                      ▼
+                  EVIDENCE
+                      │
+                      ▼
+                     DONE
+
+Responsibilities:
+
+CONTROL
+What is worth activating now?
+
+WORKFLOW
+How should the agent behave in this task state?
+
+EXECUTION STATE
+What valid path defines current work?
+
+CODE INTELLIGENCE
+What is structurally related in the repository?
+
+REPOSITORY KNOWLEDGE
+What local facts and conventions are established?
+
+TECHNICAL KNOWLEDGE
+What does the current package / platform actually support?
+
+CONTEXT
+What subset deserves model attention?
+
+EVIDENCE
+What proves the work is acceptable?
+
+
+======================================================================
+7. UNCERTAINTY-FIRST CONTROL
+======================================================================
+
+Gauntlet should operate from uncertainty, not tools.
+
+Bad mental model:
+
+    Should I load a skill?
+    Should I query docs?
+    Should I use the graph?
+    Should I open a browser?
+    Should I delegate?
+
+Correct mental model:
+
+    What could still make this task wrong?
+
+Use a small uncertainty taxonomy:
+
+INTENT
+What does the developer actually require?
+
+LOCATION
+Where does the relevant behavior live?
+
+CAUSE
+Why is the observed failure occurring?
+
+REPO_FIT
+How should this repository solve the concern?
+
+API
+What does the installed dependency / platform actually support?
+
+BEHAVIOR
+Does the requested behavior work?
+
+REGRESSION
+What existing behavior could break?
+
+SCOPE
+Is the implementation doing more than required?
+
+VISUAL
+Does rendered behavior satisfy the requirement?
+
+PERFORMANCE
+Where is the meaningful cost?
+
+Do not invent dozens of uncertainty types.
+
+These are observable state labels, not chain-of-thought.
+
+Example:
+
+type UncertaintyState = {
+  intent: "resolved" | "open";
+  location: "resolved" | "partial" | "open";
+  cause: "irrelevant" | "resolved" | "open";
+  repoFit: "resolved" | "open";
+  api: "resolved" | "open";
+  behavior: "resolved" | "open";
+  regression: "resolved" | "open";
+  scope: "resolved" | "open";
+  visual: "irrelevant" | "resolved" | "open";
+  performance: "irrelevant" | "resolved" | "open";
+};
+
+
+======================================================================
+8. SHARED ESCALATION LADDER
+======================================================================
+
+Use roughly the same escalation model across Gauntlet:
+
+L0
+Already known / cached.
+
+L1
+Cheap deterministic local evidence.
+
+L2
+Targeted local search / check / structural query.
+
+L3
+Specialized skill / reference / provider.
+
+L4
+Runtime or external evidence.
+
+L5
+Expensive reasoning / delegated work.
+
+Most tasks should remain at L0–L2.
+
+L4–L5 should be rare.
+
+Do not use a magical routing score like:
+
+    intervention usefulness = 87.4
+
+Prefer understandable elimination:
+
+    already resolved?
+    → reject
+
+    not relevant?
+    → reject
+
+    cheaper authoritative source available?
+    → reject expensive source
+
+    same information already present?
+    → reject duplicate
+
+    exceeds budget?
+    → defer unless risk justifies escalation
+
+
+======================================================================
+9. UNIFIED ACTIVATION MODEL
+======================================================================
+
+Introduce one shared candidate representation.
+
+Conceptually:
+
+type ActivationCandidate = {
+  id: string;
+
+  kind:
+    | "skill"
+    | "context"
+    | "evidence"
+    | "capability"
+    | "reference"
+    | "graph-expansion";
+
+  resolves: UncertaintyKind[];
+
+  cost: "tiny" | "low" | "medium" | "high";
+
+  authority:
+    | "cached"
+    | "repo"
+    | "local"
+    | "runtime"
+    | "external";
+
+  source: string;
+
+  reason: string;
+};
+
+Subsystems produce candidates.
+They do not independently force activation.
+
+Control outputs:
+
+type ActivationPlan = {
+  skill?: SkillName;
+  context: ContextRequest[];
+  evidence: EvidenceRequest[];
+  capabilities: CapabilityRequest[];
+  references: ReferenceRequest[];
+  graphExpansions: GraphRequest[];
+};
+
+For an ordinary task, typical result should be:
+
+    skill             0–1
+    context expansion 0–2
+    capabilities      0
+    special refs      0
+    expensive checks  0
+
+
+======================================================================
+10. SELECTION ALGORITHM
+======================================================================
+
+Conceptually:
+
+    OBSERVE
+    task
+    repo
+    execution state
+    active branch
+    uncertainty
+    working graph
+    diff
+    failures
+    available capabilities
+    evidence already held
+
+    ↓
+
+    GENERATE CANDIDATES
+
+    workflow candidates
+    context candidates
+    graph candidates
+    knowledge candidates
+    verification candidates
+    provider candidates
+
+    ↓
+
+    ELIMINATE
+
+    irrelevant
+    already resolved
+    duplicate
+    unavailable
+    dominated
+    over budget
+
+    ↓
+
+    CHOOSE MINIMAL COMPLEMENTARY SET
+
+The word complementary matters.
+
+The correct answer is not always:
+- one evidence structure,
+- or all evidence structures.
+
+A debugging task may need:
+
+    active execution path
+    +
+    failing test
+    +
+    small code neighborhood
+
+An API question may need only:
+
+    installed type declaration
+
+The selector should choose the smallest combination that resolves the uncertainty.
+
+
+======================================================================
+11. EVIDENCE VIEWS
+======================================================================
+
+Introduce a central Evidence View abstraction.
+
+Conceptually:
+
+interface EvidenceView {
+  id: string;
+
+  resolves: UncertaintyKind[];
+
+  estimate(input: SelectionState): {
+    available: boolean;
+    cost: CostClass;
+    likelyNovel: boolean;
+  };
+
+  retrieve(request: EvidenceRequest): Promise<EvidencePacket>;
+}
+
+Initial evidence views:
+
+- execution-path view,
+- recent-event view,
+- repository-fact view,
+- code-structure view,
+- source view,
+- test view,
+- package/API view,
+- specialist-reference view,
+- external-doc view,
+- browser view,
+- runtime-output view.
+
+All views should return a common compact shape:
+
+type EvidencePacket = {
+  id: string;
+  claims: EvidenceClaim[];
+  refs: EvidenceRef[];
+  resolves: UncertaintyKind[];
+  detailLevel:
+    | "reference"
+    | "concise"
+    | "detailed";
+};
+
+
+======================================================================
+12. PROGRESSIVE DISCLOSURE EVERYWHERE
+======================================================================
+
+Every substantial evidence source should support:
+
+REFERENCE
+Identifier only.
+
+CONCISE
+Small fact / summary.
+
+DETAILED
+Underlying evidence.
+
+Example:
+
+REFERENCE
+src/lib/retry.ts
+
+CONCISE
+Shared retry primitive used by 7 modules.
+
+DETAILED
+Exports, callers, relevant implementation range.
+
+Default to reference or concise.
+
+Expand only while uncertainty remains.
+
+This principle should apply to:
+- code,
+- memory,
+- repository facts,
+- docs,
+- test output,
+- browser output,
+- domain references,
+- historical lessons.
+
+The agent should not receive full content simply because Gauntlet knows it exists.
+
+
+======================================================================
+13. HIGH-LEVEL AGENT TOOLS
+======================================================================
+
+Agent-facing tools should represent meaningful developer operations, not internal implementation primitives.
+
+Bad:
+
+    graph_get_file
+    graph_get_symbol
+    graph_get_imports
+    graph_get_callers
+    graph_get_tests
+
+Prefer:
+
+    inspect_impact(target)
+
+Returning:
+
+    owner
+    dependencies
+    dependents
+    tests
+    public surface
+    relevant boundaries
+
+Low-level graph operations remain internal deterministic implementation details.
+
+Similarly, avoid exposing:
+- dozens of capability wrappers,
+- provider-specific mechanics,
+- internal cache operations.
+
+The agent should see one useful operation, not the machinery.
+
+
+======================================================================
+14. WORKFLOW PLANE
+======================================================================
+
+Keep exactly six top-level skills:
+
+UNDERSTAND
+INVESTIGATE
+IMPLEMENT
+VERIFY
+REVIEW
+OPTIMIZE
+
+Do not create dozens of narrow top-level skills.
+
+Browser testing, mutation testing, security, frontend design, Postgres, React, MCP, prototypes, SEO, performance, debugging, component libraries, and similar concerns should live as:
+- specialist references,
+- techniques,
+- provider capabilities,
+- evidence mechanisms,
+under the six stable skills.
+
+Core detects WHEN.
+Skill defines HOW.
+
+
+======================================================================
+15. SKILL PROMPT PHILOSOPHY
+======================================================================
+
+Do not make skills artificially tiny.
+
+Make them:
+- dense,
+- explicit,
+- ordered,
+- behaviorally precise,
+- low-fluff.
+
+A skill may be hundreds of tokens if every sentence changes a real engineering decision.
+
+Avoid:
+- “You are world-class.”
+- “Think deeply.”
+- persona fluff.
+- motivational framing.
+- identity theater.
+
+Use structure like:
+
+    clear purpose
+    decision hierarchy
+    preferred behavior
+    anti-patterns
+    correctness boundaries
+    stopping condition
+
+Lightweightness comes from:
+- loading only one relevant skill,
+not from:
+- making every skill weak.
+
+
+======================================================================
+16. DYNAMIC WORKFLOW TRANSITIONS
+======================================================================
+
+Skill selection must not be task-start-only.
+
+Example:
+
+    ordinary bug
+    ↓
+    IMPLEMENT
+    ↓
+    same failure repeats
+    ↓
+    INVESTIGATE
+    ↓
+    cause established
+    ↓
+    IMPLEMENT
+    ↓
+    machine verification
+
+Useful transition signals:
+
+- repeated failure,
+- same function repeatedly rewritten,
+- diff grows without evidence improvement,
+- public surface appears in diff,
+- new test appears,
+- visual files change,
+- migration appears,
+- performance measurement appears,
+- root cause becomes validated,
+- current branch stalls.
+
+Skills should unload when phase ends.
+
+Example:
+- INVESTIGATE should not remain active after root cause is established.
+- VERIFY should not be loaded if deterministic evidence already establishes completion.
+
+
+======================================================================
+17. SKILL BEHAVIOR SUMMARIES
+======================================================================
+
+UNDERSTAND
+- inspect existing context before asking,
+- derive the smallest task contract,
+- identify preserved behavior,
+- do not invent requirements,
+- ask one focused question only when guessing is materially expensive,
+- avoid mandatory brainstorm/spec ceremony.
+
+INVESTIGATE
+- observe/reproduce first when practical,
+- find root cause before editing symptoms,
+- distinguish fact from assumption,
+- stop when cause is sufficiently supported,
+- escalate only if simple inspection fails.
+
+IMPLEMENT
+- reuse before creating,
+- follow repo conventions,
+- stay task-scoped,
+- avoid speculative abstractions,
+- avoid unneeded dependencies,
+- verify unfamiliar APIs,
+- do not weaken tests.
+
+VERIFY
+- ask what uncertainty remains,
+- gather the cheapest useful evidence,
+- stop when further evidence is unlikely to change acceptance.
+
+REVIEW
+- inspect final diff only,
+- focus on issues introduced by this task,
+- flag scope drift, duplicate capability, unnecessary abstraction, dependency growth, rule drift, test weakening, public API growth, dead code, complexity.
+
+OPTIMIZE
+- measure,
+- find dominant cost,
+- change smallest relevant cause,
+- measure again,
+- do not optimize from intuition alone.
+
+
+======================================================================
+18. TASK CONTRACT
+======================================================================
+
+At task start derive a tiny internal contract from:
+- user request,
+- acceptance criteria,
+- AGENTS.md / CLAUDE.md / repo instructions,
+- tests,
+- obvious preserved behavior.
+
+Example:
+
+Goal:
+Prevent duplicate refresh requests.
+
+Preserve:
+Public API and AuthError behavior.
+
+Acceptance:
+Concurrent refresh calls trigger one actual refresh.
+
+Do not ask the user to restate what the repo can establish itself.
+
+
+======================================================================
+19. EXECUTION-STATE MEMORY
+======================================================================
+
+Do not treat long-running task memory as semantic retrieval over conversation history.
+
+Use:
+
+    execution state with explicit valid and rejected branches
+
+Core principle:
+
+    Memory for facts should be retrieved.
+    Memory for work should be resumed.
+
+Separate two forms of memory:
+
+REPOSITORY / TECHNICAL MEMORY
+Facts and structure.
+Good for lookup / search / graph retrieval.
+
+TASK EXECUTION MEMORY
+Path-dependent decisions and evidence.
+Should use active-path reconstruction.
+
+Do not collapse them into one “memory” system.
+
+
+======================================================================
+20. EXECUTION TREE
+======================================================================
+
+Represent a task as a lightweight checkpoint tree.
+
+Example:
+
+TASK ROOT
+│
+├── understanding ✓
+│
+├── investigation ✓
+│
+├── implementation A ✗
+│   └── rejected:
+│       process-local locking is insufficient
+│
+└── implementation B ← ACTIVE
+    ├── reuse existing coalescing primitive
+    └── verification pending
+
+The normal model context receives the current valid root-to-active path.
+
+It does NOT receive:
+- the full failed branch,
+- every shell command,
+- every stale hypothesis,
+- all old tool chatter.
+
+
+======================================================================
+21. THREE-LAYER TASK MEMORY
+======================================================================
+
+Use:
+
+RAW EVIDENCE
+commands / logs / diffs / tool output
+
+↓
+
+EXECUTION EVENTS
+small structured records
+
+↓
+
+CHECKPOINT TREE
+meaningful validated / rejected states
+
+Model context primarily consumes:
+
+    active checkpoint path
+    +
+    recent high-value events
+
+Raw evidence remains retrievable.
+
+
+======================================================================
+22. CHECKPOINT BOUNDARIES
+======================================================================
+
+Do not create checkpoints for every action.
+
+Create only when task state materially changes.
+
+Good boundaries:
+- task interpretation settled,
+- important constraint established,
+- root cause supported,
+- design direction chosen,
+- approach rejected,
+- implementation ready for verification,
+- verification established,
+- verification materially failed.
+
+Checkpoint types may include:
+
+type CheckpointKind =
+  | "task"
+  | "understanding"
+  | "investigation"
+  | "decision"
+  | "implementation"
+  | "verification";
+
+type CheckpointStatus =
+  | "active"
+  | "validated"
+  | "rejected";
+
+
+======================================================================
+23. REAL AGENT-TO-GAUNTLET STATE REPORTING
+======================================================================
+
+Meaningful checkpoint transitions must be reachable in normal harness use.
+
+Do not rely only on low-level observed events like:
+- file read,
+- file write,
+- command,
+- message.
+
+Provide a tiny internal state-report mechanism:
+
+reportState({
+  kind: "cause",
+  summary: "Concurrent refresh requests lack coalescing.",
+  evidenceRefs: [...]
+});
+
+Possible kinds:
+- understanding,
+- cause,
+- decision,
+- rejection,
+- implementation,
+- verification.
+
+This should be:
+- developer-invisible,
+- rare,
+- structured,
+- adapter-translated.
+
+Different harnesses may implement via:
+- native tool,
+- hidden command,
+- structured hook,
+- small internal tool call.
+
+Core only understands:
+- “report meaningful state boundary.”
+
+
+======================================================================
+24. FAILED-BRANCH QUARANTINE
+======================================================================
+
+Do not erase failed branches.
+Do not mix them into current state.
+
+Preserve:
+- approach,
+- reason rejected,
+- evidence.
+
+Surface a failed branch only if current work begins to repeat it.
+
+Example:
+
+Current direction overlaps a previously rejected approach.
+
+A second retry abstraction was rejected because
+src/lib/retry.ts already owns retry behavior.
+
+Reassess before creating another implementation.
+
+This is much better than semantic retrieval accidentally resurfacing a failed path merely because it is relevant.
+
+
+======================================================================
+25. HORIZON REDUCTION
+======================================================================
+
+Validated checkpoints should reduce the effective problem horizon.
+
+Example:
+
+large debugging task
+↓
+investigation
+↓
+CAUSE VALIDATED
+════════════════
+new compact state
+↓
+implementation
+↓
+IMPLEMENTATION VALIDATED
+════════════════
+new compact state
+↓
+verification
+
+After each validated boundary:
+- resume from compact valid state,
+- do not make the model reason over the entire historical transcript.
+
+
+======================================================================
+26. STABLE STATE VS LIVE PROGRESS
+======================================================================
+
+Separate:
+
+STABLE TASK STATE
+- goal,
+- acceptance criteria,
+- constraints,
+- validated facts,
+- important decisions.
+
+LIVE PROGRESS STATE
+- active branch,
+- current approach,
+- open uncertainties,
+- recent failures,
+- last evidence delta,
+- current working set.
+
+Stable state changes slowly.
+Progress state changes frequently.
+
+This separation improves:
+- compaction,
+- task handoff,
+- delegation,
+- debugging,
+- persistence.
+
+
+======================================================================
+27. PROGRESS-DELTA TRACKING
+======================================================================
+
+Loop detection should not depend only on repeated identical failures.
+
+At meaningful boundaries compare:
+
+    uncertainty before → after
+    evidence before → after
+    implementation scope before → after
+
+Classify:
+
+PROGRESS
+STALLED
+REGRESSED
+
+No numeric quality score required.
+
+Example stalled branch:
+
+    three edits
+    +
+    diff grew
+    +
+    same uncertainty remains
+    +
+    no new evidence
+
+Result:
+
+    branch stalled
+    → reconsider assumption
+    → INVESTIGATE / revise branch
+
+This should happen before uncontrolled looping.
+
+
+======================================================================
+28. EXECUTION-AWARE COMPACTION
+======================================================================
+
+Do not summarize history chronologically.
+
+Ask:
+
+    Which completed section of the current valid execution path
+    is stable enough to collapse?
+
+Before:
+- 14 file reads,
+- 6 commands,
+- 3 hypotheses,
+- 2 failed edits,
+- root-cause confirmation.
+
+After:
+
+CAUSE ESTABLISHED
+
+Failure:
+Concurrent refresh callers independently invoke token refresh.
+
+Cause:
+Refresh operation lacks request coalescing.
+
+Relevant:
+src/auth/session.ts
+src/lib/singleflight.ts
+
+Rejected:
+Process-local mutex because coordination scope is insufficient.
+
+Evidence:
+race reproduction.
+
+Raw evidence remains on disk.
+
+Preserve:
+- goal,
+- acceptance,
+- constraints,
+- validated facts,
+- current approach,
+- relevant code,
+- remaining uncertainty,
+- useful rejected direction,
+- evidence refs.
+
+Drop:
+- superseded hypotheses,
+- resolved compiler errors,
+- repeated searches,
+- repeated reads,
+- obsolete implementation details,
+- raw terminal chatter.
+
+
+======================================================================
+29. EXPERIENCE COMPILER
+======================================================================
+
+Add a slower, cross-task learning loop inspired by experience-to-skill compilation.
+
+Do NOT run this heavy process inside normal user tasks.
+
+Normal development loop:
+
+    agent works
+    ↓
+    Gauntlet preserves:
+      events
+      checkpoints
+      evidence
+      outcomes
+      selection traces
+      rejected branches
+
+Offline / eval evolution loop:
+
+    sample useful trajectories
+    ↓
+    extract recurring:
+      failures
+      successful strategies
+      bad interventions
+      good interventions
+    ↓
+    update persistent knowledge
+    ↓
+    propose ONE atomic behavior change
+    ↓
+    run Gauntlet eval suite
+    ↓
+    better?
+      yes → retain
+      no  → rollback behavior change
+
+Important:
+- accumulated knowledge survives,
+- a rejected behavior proposal does not erase the knowledge that produced it.
+
+Core principle:
+
+    Experience may accumulate freely.
+    Behavior must earn promotion.
+
+And:
+
+    Rejected behavior changes are still valuable knowledge.
+
+
+======================================================================
+30. FOUR KNOWLEDGE LAYERS
+======================================================================
+
+Keep these distinct:
+
+RAW EXPERIENCE
+Immutable traces / evidence.
+
+TASK EXECUTION STATE
+Current valid path and rejected branches.
+
+PERSISTENT KNOWLEDGE
+Cross-task verified patterns.
+
+PROCEDURAL BEHAVIOR
+Skills, selector rules, verification policies, context policies.
+
+Do not collapse all of these into one memory store.
+
+
+======================================================================
+31. LEARNED PATTERNS
+======================================================================
+
+Potential internal representation:
+
+type LearnedPattern = {
+  id: string;
+
+  scope:
+    | "global"
+    | "language"
+    | "framework"
+    | "repository";
+
+  kind:
+    | "failure"
+    | "strategy"
+    | "anti_pattern"
+    | "selection"
+    | "verification";
+
+  claim: string;
+
+  evidenceRefs: string[];
+
+  occurrences: number;
+
+  status:
+    | "observed"
+    | "supported"
+    | "promoted";
+};
+
+Promotion ladder:
+
+    one occurrence
+    → observation
+
+    repeated + evidence-backed
+    → supported knowledge
+
+    supported knowledge
+    + candidate procedural improvement
+    + eval improvement
+    → promoted behavior
+
+This should prevent Gauntlet from “learning” noise.
+
+
+======================================================================
+32. WHAT EXPERIENCE MAY CHANGE
+======================================================================
+
+Cross-task experience should not only mutate skills.
+
+Possible atomic proposal types:
+
+SKILL CHANGE
+Example:
+INVESTIGATE should explicitly verify empty search results.
+
+SELECTOR CHANGE
+Example:
+Repeated rewrite + unchanged evidence should trigger INVESTIGATE sooner.
+
+REPO RULE CHANGE
+Example:
+This repository consistently routes DB access through repositories.
+
+EVIDENCE POLICY CHANGE
+Example:
+Public API changes need downstream consumer verification.
+
+CONTEXT POLICY CHANGE
+Example:
+This evidence view repeatedly adds no useful information.
+
+REFERENCE CHANGE
+Example:
+Add a verified Postgres concurrency rule.
+
+Exactly one atomic proposal per experiment when possible.
+
+Reason:
+- attribution becomes possible,
+- rollback becomes clean,
+- eval results are interpretable.
+
+
+======================================================================
+33. BRANCH-DERIVED LESSONS
+======================================================================
+
+Sometimes compare:
+
+failed branch
+vs
+successful branch
+
+If one concrete difference clearly explains success, produce a candidate lesson.
+
+Example:
+
+Failed:
+created new transaction boundary
+
+Succeeded:
+used existing SessionCoordinator
+
+Candidate lesson:
+auth refresh should use the repository’s existing session coordination boundary
+
+Do NOT automatically promote.
+
+Promotion requires:
+- clear evidence,
+- stable scope,
+- usefulness beyond one accidental case,
+- eval benefit if behavior changes.
+
+
+======================================================================
+34. THREE TIMESCALES
+======================================================================
+
+Gauntlet now has three distinct timescales:
+
+MILLISECONDS / SECONDS
+CONTROL
+Select what matters now.
+
+MINUTES / TASK
+EXECUTION STATE
+Maintain the valid trajectory.
+
+DAYS / MANY TASKS
+EXPERIENCE COMPILATION
+Improve Gauntlet itself.
+
+Each solves a different problem.
+
+Do not mix them.
+
+
+======================================================================
+35. MODEL-INDEPENDENT PRODUCT IP
+======================================================================
+
+A useful engineering procedure discovered while one coding model is active can be:
+- validated,
+- distilled,
+- stored in Gauntlet,
+- then reused by other coding models later.
+
+This means Gauntlet’s long-term value can become:
+- model-independent engineering procedure,
+- selection policy,
+- repository understanding,
+- evidence policy,
+- validated expert knowledge.
+
+Do not share raw transcripts across models.
+Share validated compiled procedure.
+
+
+======================================================================
+36. CONTEXT GOVERNOR
+======================================================================
+
+Treat context as a budgeted resource.
+
+Responsibilities:
+
+    select
+    rank
+    budget
+    cache
+    deduplicate
+    refresh
+    compact
+    offload
+
+Default hierarchy:
+
+    task / acceptance criteria
+    ↓
+    active execution state
+    ↓
+    direct symbols/files
+    ↓
+    tests
+    ↓
+    existing helpers/primitives
+    ↓
+    active repo rules
+    ↓
+    repo conventions
+    ↓
+    dependencies/config/version
+    ↓
+    official external docs only if required
+
+Track:
+- path,
+- hash,
+- relevant symbols,
+- last read.
+
+If unchanged:
+- do not reload full file.
+
+
+======================================================================
+37. MARGINAL CONTEXT, NOT RELEVANCE
+======================================================================
+
+Do not ask only:
+
+    Is this file relevant?
+
+Ask:
+
+    Does this candidate add new decision-relevant information?
+
+Different file does not automatically mean different information.
+
+Move toward contribution identities such as:
+
+    owner:refresh-flow
+    primitive:singleflight
+    contract:AuthError
+    acceptance:no-duplicate-refresh
+    interface:SessionStore
+    caller:api-request-path
+    boundary:route-service
+
+Three files may all establish:
+
+    primitive:singleflight
+
+Only one concise contribution should enter context.
+
+Relevant but redundant context is still waste.
+
+
+======================================================================
+38. IDEA-LEVEL DEDUPLICATION
+======================================================================
+
+Input:
+
+IMPLEMENT:
+reuse existing capability
+
+repo fact:
+HTTP = src/lib/http.ts
+
+code intelligence:
+31 modules use src/lib/http.ts
+
+domain reference:
+prefer shared HTTP primitive
+
+Output:
+
+HTTP is centralized through src/lib/http.ts and already used broadly.
+Extend it instead of creating another client.
+
+Deduplicate ideas, not only documents.
+
+
+======================================================================
+39. CONTEXT PACKET EXAMPLE
+======================================================================
+
+TASK
+Fix concurrent refresh race.
+
+VALIDATED STATE
+Concurrent callers independently enter token refresh.
+
+CURRENT APPROACH
+Reuse src/lib/singleflight.ts around refresh.
+
+RELEVANT CODE
+src/auth/session.ts#refresh
+src/auth/token.ts#refreshToken
+src/lib/singleflight.ts
+
+TESTS
+src/auth/session.test.ts
+
+PRESERVE
+AuthError behavior
+public API
+
+REJECTED
+Process-local mutex: insufficient coordination scope.
+
+OPEN
+Confirm regression test fails against pre-change behavior.
+
+This is much stronger than replaying a long transcript.
+
+
+======================================================================
+40. OUTPUT CONDITIONING
+======================================================================
+
+Output conditioning should remain first-class because it can produce negative net token cost.
+
+Example:
+
+skill guidance        +500 tokens
+compressed test logs -8000 tokens
+
+Net:
+-7500 tokens
+
+Do not merely truncate.
+
+Extract:
+- exit code,
+- summary,
+- unique failures,
+- relevant file/line,
+- first useful stack frame,
+- important warnings.
+
+Store full raw output separately.
+
+Example model-visible output:
+
+Tests:
+184 passed
+2 failed
+
+Failures:
+session.test.ts — expiry boundary
+retry.test.ts — expected 3 calls, got 4
+
+Raw:
+run-output:42
+
+The evidence ref can be attached to checkpoints.
+
+Principle:
+
+    Compress context, not evidence.
+
+
+======================================================================
+41. ADDRESSABLE KNOWLEDGE
+======================================================================
+
+Every knowledge item should conceptually have an address before content.
+
+Possible conceptual addressing:
+
+    repo://primitive/http
+    code://src/auth/session.ts#refresh
+    evidence://run/42/failure/1
+    knowledge://zod/4/discriminated-union
+    state://current/cause
+
+Literal URI syntax is optional.
+
+The point:
+- stable reference first,
+- concise fact second,
+- detail only when needed.
+
+This makes progressive disclosure natural.
+
+
+======================================================================
+42. CODE INTELLIGENCE PLANE
+======================================================================
+
+Gauntlet should understand repository structure natively.
+
+Do NOT begin with:
+- embeddings,
+- vector DB,
+- always-on graph server,
+- giant semantic summaries,
+- whole-repo AI-generated knowledge graph.
+
+Start deterministic and progressive.
+
+
+======================================================================
+43. LEVEL 1 CODE INTELLIGENCE
+======================================================================
+
+Persist:
+
+- files,
+- content hashes,
+- imports,
+- exports,
+- directory/package boundaries,
+- test relationships.
+
+Answer cheaply:
+
+- what imports this?
+- what does this depend on?
+- what tests are nearby?
+- is this public?
+- what package owns it?
+
+
+======================================================================
+44. LEVEL 2 CODE INTELLIGENCE
+======================================================================
+
+Add symbols:
+
+- functions,
+- classes,
+- methods,
+- types,
+- interfaces,
+- constants.
+
+Edges:
+
+- defines,
+- references,
+- calls,
+- exports,
+- implements,
+- extends,
+- tested-by.
+
+Prefer:
+- language tooling,
+- parser/LSP when practical.
+
+Do not:
+- build a universal compiler.
+
+
+======================================================================
+45. LEVEL 3 CODE INTELLIGENCE
+======================================================================
+
+Only when required:
+
+- likely duplicate capability,
+- behavior ownership,
+- architecture boundary,
+- unexpected dependency path,
+- semantic overlap.
+
+Resolution order:
+
+    cheap heuristics
+    ↓
+    structural evidence
+    ↓
+    model reasoning only if unresolved
+
+Rare by default.
+
+
+======================================================================
+46. PERSISTENT SHALLOW INDEX
+======================================================================
+
+Do not repeatedly rebuild structural slices from dozens or hundreds of files.
+
+Persist:
+
+    .gauntlet/
+      index/
+        files.json
+        edges.json
+        symbols.json
+
+On task start:
+
+    load cached index
+    ↓
+    check fingerprints
+    ↓
+    update changed files only
+
+No DB initially.
+
+No daemon.
+
+No full rescan unless:
+- index missing,
+- repository small enough,
+- cold setup cost justified.
+
+
+======================================================================
+47. PROGRESSIVE GRAPH DEPTH
+======================================================================
+
+Introduce conceptually:
+
+    ensureDepth(target, depth)
+
+Possible levels:
+
+FILE
+files/imports/exports.
+
+SYMBOL
+functions/classes/types.
+
+RELATION
+references/callers/tests.
+
+SEMANTIC
+ownership / duplicate capability / higher-order patterns.
+
+Most tasks should stop at FILE or SYMBOL.
+
+SEMANTIC should be rare.
+
+
+======================================================================
+48. GRAPH CONFIDENCE
+======================================================================
+
+Treat structural evidence according to provenance.
+
+Examples:
+
+resolved parser/LSP edge
+→ strong
+
+import-path heuristic
+→ medium
+
+filename-based test relation
+→ medium
+
+regex call guess
+→ weak
+
+If a high-risk decision depends on a weak edge:
+- verify through stronger evidence.
+
+Do not pretend a regex graph is exact.
+
+
+======================================================================
+49. WORKING GRAPH
+======================================================================
+
+Keep persistent repository graph separate from model context.
+
+For each task build a small task-local graph.
+
+Example:
+
+Refresh Race
+│
+├── target
+│   └── session.refresh()
+│
+├── dependencies
+│   ├── token.refresh()
+│   └── singleflight()
+│
+├── callers
+│   ├── request path A
+│   ├── request path B
+│   └── request path C
+│
+├── tests
+│   └── session.test.ts
+│
+└── repo rule
+    └── AuthError
+
+The graph can know far more than the agent sees.
+
+
+======================================================================
+50. CODE GRAPH VS EXECUTION TREE
+======================================================================
+
+Keep them distinct.
+
+CODE GRAPH
+What is structurally related?
+
+EXECUTION TREE
+What validated sequence of decisions defines current work?
+
+Gauntlet joins them only for the task:
+
+    current execution state
+    ↓
+    current uncertainty
+    ↓
+    query relevant code neighborhood
+    ↓
+    provide minimal evidence/context
+
+Do not build one giant graph for everything.
+
+
+======================================================================
+51. IMPACT CONE
+======================================================================
+
+Add a core primitive conceptually like:
+
+    impact(target)
+
+Return:
+
+- direct dependents,
+- important transitive dependents,
+- public consumers,
+- affected tests,
+- package boundaries,
+- strong applicable repo rules.
+
+Example:
+
+Changed:
+token.refresh()
+
+Impact:
+3 callers
+1 public export
+4 tests
+0 package boundaries
+
+Use impact to scale:
+- context budget,
+- planning depth,
+- review requirement,
+- verification scope.
+
+
+======================================================================
+52. IMPACT-TRIGGERED PLANNING
+======================================================================
+
+Do not introduce mandatory planning.
+
+Small impact:
+
+    private helper
+    1 caller
+    1 test
+
+→ direct implementation.
+
+Large impact:
+
+    public interface
+    3 packages
+    37 callers
+    11 tests
+
+→ derive compact change frontier:
+
+    1. interface
+    2. owning implementation
+    3. downstream consumers
+    4. affected tests
+
+Use planning only when the graph proves the work is distributed.
+
+
+======================================================================
+53. EXISTING-CAPABILITY DISCOVERY
+======================================================================
+
+Before creating common infrastructure search:
+
+- file names,
+- symbols,
+- exports,
+- callers,
+- installed packages,
+- known repo primitives.
+
+Example:
+
+Agent wants:
+retry-manager.ts
+
+Gauntlet finds:
+src/lib/retry.ts
+used by 7 modules
+
+Inject:
+
+Existing retry capability:
+src/lib/retry.ts
+
+It is already broadly reused.
+Extend/reuse it before creating another retry abstraction.
+
+This is stronger than generic “reuse before creating.”
+
+
+======================================================================
+54. REPOSITORY PROFILE
+======================================================================
+
+Maintain a small evidence-backed profile.
+
+Example:
+
+Language: TypeScript
+Tests: Vitest
+Validation: Zod
+Errors: AppError
+Database: repository layer
+Logging: src/lib/logger.ts
+HTTP: src/lib/http.ts
+Exports: named
+
+Evidence hierarchy:
+
+    explicit project instructions
+    ↓
+    config/package
+    ↓
+    dependencies
+    ↓
+    dominant local usage
+    ↓
+    light inference
+
+Progressive discovery.
+No install-time deep scan.
+
+
+======================================================================
+55. ENFORCEABLE REPO RULES
+======================================================================
+
+Promote only high-confidence conventions when:
+
+- one sanctioned path clearly exists,
+- violation creates meaningful cost,
+- cheap reliable detection exists.
+
+Example:
+
+id: validation-stack
+preferred:
+  - zod
+avoid:
+  - second-validation-library
+evidence:
+  - package.json
+  - src/**/schema.ts
+detector:
+  type: dependency-import
+
+Rules have two jobs:
+1. context hint,
+2. independent machine enforcement.
+
+Activate dynamically from task/diff.
+
+Usually:
+0–3 rules.
+
+
+======================================================================
+56. NON-REGRESSION BASELINES
+======================================================================
+
+Relevant before/after baselines may include:
+
+- lint/static issues,
+- skipped tests,
+- dependencies,
+- architecture/rule violations,
+- public exports,
+- known duplicate capability.
+
+Existing debt may remain.
+
+The task should not increase it without justification.
+
+Only measure relevant baselines.
+
+
+======================================================================
+57. TECHNICAL KNOWLEDGE SYSTEM
+======================================================================
+
+Gauntlet should support deep technical knowledge without permanently prompting it.
+
+Demand-driven local knowledge may contain:
+
+- package,
+- installed version,
+- symbol/API,
+- source,
+- relevant fact,
+- fingerprint,
+- freshness.
+
+Example:
+
+package: zod
+version: 4.1.2
+symbol: discriminatedUnion
+source: installed types
+
+Do not download entire docs warehouses by default.
+
+
+======================================================================
+58. API RESOLUTION LADDER
+======================================================================
+
+For API uncertainty:
+
+    repo usage
+    ↓
+    installed types
+    ↓
+    installed source
+    ↓
+    package / lockfile version
+    ↓
+    local docs
+    ↓
+    cached verified knowledge
+    ↓
+    targeted official external docs
+
+After each step:
+
+    resolved?
+    → stop
+
+Do not call external docs simply because a provider exists.
+
+
+======================================================================
+59. NARROW DOC REQUESTS
+======================================================================
+
+Bad:
+
+    Retrieve Next.js docs.
+
+Good:
+
+    Package:
+    next
+
+    Installed version:
+    x.y.z
+
+    Question:
+    Does this route handler API support X?
+
+    Need:
+    relevant version-specific section only.
+
+Technical context should answer a question, not provide a manual.
+
+
+======================================================================
+60. KNOWLEDGE HANDLES
+======================================================================
+
+Persist rich knowledge behind small handles.
+
+Example:
+
+handle:
+zod-discriminated-union
+
+cues:
+zod
+union
+schema variant
+
+value:
+verified version-specific fact + evidence
+
+Selector sees:
+- handle,
+- cues,
+- small metadata.
+
+Expand full value only if needed.
+
+
+======================================================================
+61. KNOWLEDGE INVALIDATION
+======================================================================
+
+Package knowledge should include:
+
+- package,
+- version,
+- source,
+- fingerprint.
+
+Version changes:
+→ invalidate.
+
+Source changes:
+→ invalidate.
+
+Do not let cached API knowledge silently go stale.
+
+
+======================================================================
+62. EXPERT KNOWLEDGE LIBRARY
+======================================================================
+
+Gauntlet may eventually have a large expert reference library.
+
+Potential areas:
+
+FRONTEND
+- React,
+- Next.js,
+- browser behavior,
+- accessibility,
+- UI systems,
+- visual verification.
+
+BACKEND
+- API design,
+- distributed systems,
+- caching,
+- concurrency.
+
+DATA
+- Postgres,
+- schema design,
+- migrations,
+- query performance,
+- RLS.
+
+SECURITY
+- authentication,
+- authorization,
+- secrets,
+- web security.
+
+QUALITY
+- testing,
+- debugging,
+- performance,
+- observability.
+
+TOOLING
+- MCP,
+- agent tools,
+- CI,
+- build systems,
+- repository tooling.
+
+This library may be large.
+
+The active subset should remain tiny.
+
+
+======================================================================
+63. NO PERSONA EXPLOSION
+======================================================================
+
+Do not turn deep expertise into 140+ visible Gauntlet personas.
+
+Keep:
+
+UNDERSTAND
+INVESTIGATE
+IMPLEMENT
+VERIFY
+REVIEW
+OPTIMIZE
+
+Then retrieve specialist knowledge beneath them.
+
+Do not inject:
+
+“You are an elite Staff Database Engineer…”
+
+Instead inject useful procedure:
+
+For write-concurrency changes:
+
+1. identify transaction boundary,
+2. check lock/uniqueness behavior,
+3. inspect existing transaction primitive,
+4. preserve idempotency,
+5. test concurrent conflict case.
+
+Expertise matters.
+Persona theater usually does not.
+
+
+======================================================================
+64. SEPARATE EXPERTISE FROM PERSONALITY
+======================================================================
+
+Keep:
+- domain expertise,
+- decision hierarchy,
+- workflow techniques,
+- anti-patterns,
+- verification methods,
+- exit criteria.
+
+Usually discard:
+- backstory,
+- character voice,
+- status language,
+- role-playing identity.
+
+Dense procedure beats persona fluff.
+
+
+======================================================================
+65. SPECIALIST PERSPECTIVES WITHOUT SPECIALIST AGENTS
+======================================================================
+
+Before spawning multiple agents, try the cheap version:
+
+Task touches:
+database + authorization
+
+Selector retrieves:
+3 relevant database constraints
++
+2 relevant authorization constraints
+
+Deduplicate.
+
+Inject one compact packet.
+
+Example:
+
+Relevant constraints:
+
+• Existing writes use the repository transaction boundary.
+• Authorization must be enforced at the data-access boundary.
+• New uniqueness invariant should use database enforcement where supported.
+
+Verification:
+
+• authorized write succeeds
+• unauthorized write fails
+• concurrent duplicate write cannot violate uniqueness
+
+This gives multiple expert perspectives without:
+- multiple transcripts,
+- multi-agent coordination,
+- synthesis overhead.
+
+Only spawn a worker when independent reasoning is genuinely valuable.
+
+
+======================================================================
+66. DOMAIN DETECTION != ACTIVATION
+======================================================================
+
+Repository may contain:
+- React,
+- Postgres.
+
+README task:
+- activate neither.
+
+Performance task:
+- activate relevant React performance reference.
+
+RLS task:
+- activate relevant DB/security reference.
+
+Detection means:
+- available.
+
+Activation means:
+- current uncertainty justifies it.
+
+
+======================================================================
+67. SEARCH DOMAIN KNOWLEDGE
+======================================================================
+
+Do not load a whole pack.
+
+Query:
+
+domain = react-performance
+topic = sequential data requests
+
+Return:
+2–4 relevant high-impact rules.
+
+Start with:
+- headings,
+- metadata,
+- tags,
+- keywords.
+
+No embeddings by default.
+
+Use qualitative impact:
+- CRITICAL
+- HIGH
+- MEDIUM
+- LOW
+
+No fake precision.
+
+
+======================================================================
+68. REFERENCE TYPES
+======================================================================
+
+Formalize the distinction:
+
+SKILLS
+How should the agent behave?
+
+REFERENCES
+Expert knowledge about a domain.
+
+REPO FACTS
+Truth about this repository.
+
+EXECUTION STATE
+Truth about this task.
+
+EVIDENCE
+Truth about the result.
+
+Example:
+
+IMPLEMENT skill:
+Reuse before creating.
+
+DATABASE reference:
+Prefer uniqueness constraints over application-only duplicate prevention.
+
+REPO fact:
+Writes go through repositories.
+
+EXECUTION state:
+Duplicate requests reproduce under concurrent creation.
+
+EVIDENCE:
+Concurrency test fails before / passes after.
+
+These should remain separate and then be compiled into one small intervention.
+
+
+======================================================================
+69. CAPABILITY REGISTRY
+======================================================================
+
+The selector should know what mechanisms are available.
+
+Conceptually:
+
+type Capability = {
+  id: string;
+  solves: UncertaintyKind[];
+  available: boolean;
+  cost: "tiny" | "low" | "medium" | "high";
+  source: string;
+  authority?: "local" | "repo" | "runtime" | "external";
+};
+
+Examples:
+- local search,
+- indexed search,
+- symbol index,
+- docs,
+- browser,
+- profiling,
+- component registry,
+- sandbox,
+- delegation,
+- property testing,
+- mutation testing.
+
+
+======================================================================
+70. CAPABILITY PRECEDENCE
+======================================================================
+
+Generally:
+
+    cached evidence
+    ↓
+    repo-native capability
+    ↓
+    host-native capability
+    ↓
+    installed specialist provider
+    ↓
+    Gauntlet fallback
+    ↓
+    external capability
+
+Use the cheapest non-dominated source.
+
+Example:
+If installed types are current, authoritative, and cheap:
+- do not query external docs.
+
+
+======================================================================
+71. PROVIDERS
+======================================================================
+
+Keep provider interfaces generic.
+
+Examples:
+
+SearchProvider
+DocsProvider
+BrowserProvider
+ReferenceProvider
+RegistryProvider
+ExecutionProvider
+DelegationProvider
+OutputProvider
+CodeIntelligenceProvider
+
+Control owns intent.
+Provider owns mechanics.
+
+Do not leak provider-specific syntax into core policy.
+
+
+======================================================================
+72. BROWSER
+======================================================================
+
+Browser is an evidence capability.
+
+Not a permanent autonomous workflow.
+
+Use only for:
+- visual uncertainty,
+- interaction uncertainty,
+- acceptance path that genuinely requires browser state.
+
+Flow:
+
+    open changed route
+    ↓
+    inspect structured state
+    ↓
+    perform narrow acceptance interaction
+    ↓
+    screenshot if useful
+    ↓
+    stop
+
+Prefer compact browser evidence:
+- visible text,
+- roles,
+- labels,
+- controls,
+- accessibility state,
+- console errors,
+- network errors,
+- selected screenshot.
+
+Avoid:
+- full DOM dumps,
+- long browser transcripts,
+- broad app audits.
+
+Normal budget:
+- one inspection,
+- one confirmation if necessary.
+
+
+======================================================================
+73. COMPONENT REGISTRY
+======================================================================
+
+If repository uses a component registry/system:
+
+    need component
+    ↓
+    existing local component?
+    ↓
+    configured registry item?
+    ↓
+    installed design-system primitive?
+    ↓
+    compose existing?
+    ↓
+    only then custom primitive
+
+shadcn may be a provider/integration.
+Do not make it a core dependency.
+
+Preview generated changes where possible.
+Preserve local customizations.
+
+
+======================================================================
+74. DELEGATION
+======================================================================
+
+Gauntlet is not multi-agent by default.
+
+Delegate only when:
+- subtask is independently scoped,
+- handoff context is small,
+- merge-conflict risk is low,
+- parallelism or isolation has real benefit,
+- coordination cost is lower than direct work.
+
+Default:
+0 workers.
+
+Initial maximum:
+1 worker.
+
+No hierarchy.
+
+No multi-agent debate.
+
+
+======================================================================
+75. DELEGATION HANDOFF
+======================================================================
+
+Worker gets:
+
+- goal,
+- current validated checkpoint,
+- acceptance criteria,
+- constraints,
+- relevant code neighborhood,
+- repo rules,
+- expected deliverable.
+
+Not:
+- entire transcript.
+
+Worker returns:
+
+- status,
+- result,
+- evidence,
+- changed files,
+- blocker.
+
+Parent owns final acceptance.
+
+Worker success claim is evidence, not truth.
+
+
+======================================================================
+76. EVENT-DRIVEN DELEGATION
+======================================================================
+
+Preferred:
+
+    dispatch
+    ↓
+    parent stops spending tokens
+    ↓
+    child works
+    ↓
+    completion / blocker callback
+    ↓
+    parent verifies
+
+No polling by default.
+
+
+======================================================================
+77. EVIDENCE PLANE
+======================================================================
+
+Verification question:
+
+    What meaningful uncertainty remains before acceptance?
+
+Evidence mapping examples:
+
+type uncertainty
+→ typecheck
+
+behavior uncertainty
+→ affected behavioral test
+
+regression uncertainty
+→ impact-based test set
+
+repo-fit uncertainty
+→ deterministic repo rule
+
+new regression test uncertainty
+→ old-vs-new sensitivity check
+
+API uncertainty
+→ installed types/docs
+
+visual uncertainty
+→ browser evidence
+
+performance uncertainty
+→ benchmark/profile
+
+auth uncertainty
+→ negative permission/session case
+
+
+======================================================================
+78. RISK-AWARE EVIDENCE
+======================================================================
+
+Do not map:
+
+uncertainty type
+→ mandatory heavy check
+
+without considering:
+
+    uncertainty
+    +
+    impact
+    +
+    task type
+    +
+    available evidence
+    +
+    change kind
+    +
+    preservation requirements
+
+Example low-risk regression uncertainty:
+
+private helper
+1 caller
+mechanical rename
+no behavioral tests
+
+Acceptable:
+- typecheck,
+- diff inspection,
+- repo rules.
+
+Do not block forever because no behavioral test exists.
+
+Example high-risk regression uncertainty:
+
+public API
+84 dependents
+3 packages
+
+Require:
+- affected tests,
+- API compatibility evidence,
+- possibly REVIEW,
+- broader integration evidence.
+
+
+======================================================================
+79. PRESERVATION EVIDENCE
+======================================================================
+
+Verification should explicitly model:
+
+CHANGE
+What must become different?
+
+PRESERVE
+What must remain unchanged?
+
+Example:
+
+Goal:
+replace parser implementation
+
+Preserve:
+public API
+error semantics
+serialized output
+
+VERIFY should gather evidence for both.
+
+Especially important for:
+- refactors,
+- performance work,
+- security hardening,
+- migrations,
+- dependency replacement.
+
+
+======================================================================
+80. COUNTERFACTUAL TEST EVIDENCE
+======================================================================
+
+For valuable new behavior-specific tests, when safe:
+
+    new test
+    ↓
+    run against old / broken behavior
+    ↓
+    should fail
+    ↓
+    run against fixed behavior
+    ↓
+    should pass
+
+If:
+old passes
+new passes
+
+Then:
+evidence is weak.
+
+Use selectively.
+
+Do not force if:
+- unsafe,
+- expensive,
+- environment not reproducible.
+
+
+======================================================================
+81. BEFORE-STOP GATE
+======================================================================
+
+First-class completion flow:
+
+    agent requests stop
+    ↓
+    inspect active execution path
+    ↓
+    final diff
+    ↓
+    impact cone
+    ↓
+    active repo rules
+    ↓
+    baseline deltas
+    ↓
+    test integrity
+    ↓
+    preservation requirements
+    ↓
+    cheapest remaining evidence
+    ↓
+    meaningful uncertainty resolved?
+
+If yes:
+DONE.
+
+If no:
+one concise correction / evidence packet.
+
+Example:
+
+Completion blocked:
+
+1. New route bypasses the repository-layer convention.
+2. Regression test also passes against pre-change behavior.
+
+Fix these only.
+
+Default automatic correction:
+0–1.
+
+No endless repair loops.
+
+
+======================================================================
+82. MACHINE FIRST, MODEL SECOND
+======================================================================
+
+Preferred order:
+
+    cached evidence
+    ↓
+    diff
+    ↓
+    repo rules
+    ↓
+    static checks
+    ↓
+    affected tests
+    ↓
+    runtime evidence
+    ↓
+    semantic VERIFY guidance
+    ↓
+    extra model / delegation
+
+Do not ask a model what the compiler can prove.
+
+
+======================================================================
+83. PROACTIVITY POLICY
+======================================================================
+
+Gauntlet must decide not only what to detect, but whether a detected insight is worth surfacing.
+
+Before interrupting:
+
+    evidence strength
+    +
+    task relevance
+    +
+    expected actionability
+
+If an issue is:
+- weak,
+- unrelated,
+- unlikely to change the current task,
+
+stay silent.
+
+The product should not become a constant unsolicited reviewer.
+
+
+======================================================================
+84. HUMAN-INTERRUPTION POLICY
+======================================================================
+
+Ask the developer only when:
+
+    uncertainty is material
+    +
+    multiple plausible choices lead to meaningfully different outcomes
+    +
+    repository evidence cannot resolve it
+    +
+    guessing is more expensive than asking
+
+Ask one focused question.
+
+Do not interview users.
+
+Humans should generally own:
+- product intent,
+- irreversible tradeoffs,
+- meaningful policy choices.
+
+Gauntlet/agent should own:
+- repo exploration,
+- implementation mechanics,
+- verification strategy.
+
+
+======================================================================
+85. SELECTION TRACE
+======================================================================
+
+Every nontrivial activation should be explainable internally.
+
+Example:
+
+Activated:
+INVESTIGATE
+
+Reason:
+same behavioral failure repeated
+active implementation branch no longer supported
+
+Activated:
+symbol expansion
+
+Reason:
+behavior owner still unknown
+
+Skipped:
+external docs
+
+Reason:
+installed types resolved API uncertainty
+
+Skipped:
+browser
+
+Reason:
+no visual uncertainty
+
+Skipped:
+delegation
+
+Reason:
+task scope too small
+
+Persist locally.
+Do not spam normal users.
+
+
+======================================================================
+86. SELECTION ROI
+======================================================================
+
+Record locally:
+
+- intervention,
+- trigger,
+- cost class,
+- whether it found actionable evidence,
+- whether task state changed,
+- whether final outcome improved.
+
+No cloud telemetry required.
+
+Use simple stats to tighten triggers over time.
+
+No trained router required.
+
+
+======================================================================
+87. NEGATIVE ROUTING
+======================================================================
+
+Every capability / skill / reference needs:
+
+- positive examples,
+- negative examples,
+- borderline examples.
+
+Example INVESTIGATE:
+
+Activate:
+- intermittent failure,
+- unknown root cause,
+- repeated ineffective patch.
+
+Do not activate:
+- obvious missing import,
+- simple typo,
+- explicit compiler diagnostic.
+
+Example React performance reference:
+
+Activate:
+- request waterfall,
+- bundle regression,
+- rerender issue.
+
+Do not activate:
+- README,
+- text change,
+- aria-label.
+
+Correct silence is routing quality.
+
+
+======================================================================
+88. REPOSITORY BRAIN
+======================================================================
+
+Gauntlet may maintain a small persistent repository brain:
+
+- repo profile,
+- structural index,
+- strong conventions,
+- verified lessons,
+- technical package facts.
+
+Everything must be:
+
+- structured,
+- evidence-backed,
+- fingerprinted,
+- invalidatable,
+- compact.
+
+Good:
+
+validation = Zod
+source = package.json
+
+session.refresh callers = 3
+source = structural index
+
+routes → services → repositories
+evidence = 14/15 relevant route files
+
+Bad:
+
+“The project generally follows a modern layered architecture with a strong focus on maintainability…”
+
+Facts first.
+
+
+======================================================================
+89. STATE STORAGE
+======================================================================
+
+Possible layout:
+
+.gauntlet/
+  repo-profile.json
+
+  index/
+    files.json
+    symbols.json
+    edges.json
+
+  knowledge/
+    packages.jsonl
+    patterns.jsonl
+
+  rules.json
+  lessons.jsonl
+
+  sessions/
+    <task-id>/
+      state.json
+      checkpoints.json
+      events.jsonl
+
+  runs/
+    <run-id>/
+      outputs/
+
+  evals/
+    results/
+
+No DB initially.
+
+
+======================================================================
+90. STORAGE BOUNDS
+======================================================================
+
+Do not let state grow without limit.
+
+Possible policy:
+
+raw outputs
+→ per-run retention / cleanup
+
+events
+→ bounded per session
+
+checkpoint tree
+→ small
+
+repo structural cache
+→ hash invalidated
+
+package knowledge
+→ version invalidated
+
+cross-task patterns
+→ evidence-backed, compact
+
+Avoid:
+- permanent transcripts,
+- giant memory blobs,
+- unbounded history.
+
+
+======================================================================
+91. HARNESS COMPATIBILITY
+======================================================================
+
+Optimize across:
+
+- Claude Code,
+- Codex,
+- Cursor,
+- OpenCode,
+- GitHub Copilot / VS Code,
+- Gemini CLI,
+- Hermes,
+- other coding harnesses.
+
+Use:
+- capability negotiation,
+- thin adapters,
+- shared core logic.
+
+Conceptual capabilities:
+
+interface HarnessCapabilities {
+  skills: {
+    supported: boolean;
+    dynamicLoad: boolean;
+  };
+
+  lifecycle: {
+    taskStart: boolean;
+    beforeTool: boolean;
+    afterTool: boolean;
+    beforeStop: boolean;
+  };
+
+  tools: {
+    shell: boolean;
+    mcp: boolean;
+    browser: boolean;
+  };
+
+  delegation: {
+    supported: boolean;
+    callback: boolean;
+    modelSelection: boolean;
+  };
+
+  telemetry: {
+    tokens: boolean;
+    cost: boolean;
+  };
+
+  environment: {
+    worktrees: boolean;
+    sandbox: boolean;
+  };
+}
+
+Core owns intent.
+Adapter owns syntax.
+
+Graceful degradation.
+
+
+======================================================================
+92. NATIVE HOST OPTIMIZATIONS
+======================================================================
+
+Use host-native features when they save meaningful cost:
+
+- structured skill loading,
+- native lifecycle hooks,
+- native worktrees,
+- native token telemetry,
+- native callbacks,
+- native browser.
+
+But every native optimization needs a generic fallback.
+
+Provider precedence:
+
+    repo-native
+    ↓
+    host-native
+    ↓
+    installed specialist
+    ↓
+    Gauntlet fallback
+
+
+======================================================================
+93. EVERYDAY DYNAMIC ACTIVATION
+======================================================================
+
+Gauntlet should be always present, but almost nothing expensive should be always active.
+
+Lifecycle:
+
+    TASK START
+    ↓
+    cheap classification / uncertainty
+    ↓
+    tiny repo + state packet
+    ↓
+    activate 0–1 relevant skill/reference
+    ↓
+    agent works normally
+    ↓
+    cheap passive observation
+    ↓
+    meaningful state boundary?
+    ↓
+    checkpoint if needed
+    ↓
+    BEFORE STOP
+    ↓
+    relevant rules / baselines / evidence
+    ↓
+    done
+
+Frequency:
+
+EVERY TASK, CHEAP
+- task/session IDs,
+- classification,
+- cached repo profile,
+- stable/live state,
+- maybe output conditioning,
+- basic stop path.
+
+SOMETIMES
+- one skill,
+- relevant repo rules,
+- impacted verification,
+- repo hint,
+- working graph expansion.
+
+RARELY
+- specialist reference,
+- browser,
+- external docs,
+- counterfactual test,
+- deep review.
+
+VERY RARELY
+- stronger model,
+- delegation,
+- broad E2E,
+- mutation,
+- security sweep.
+
+
+======================================================================
+94. TYPICAL TASK ACTIVATION EXAMPLES
+======================================================================
+
+TRIVIAL RENAME
+
+Expected:
+- no skill,
+- no docs,
+- no graph deepening,
+- no browser,
+- no delegation,
+- cheap diff/static check.
+
+BACKEND FEATURE
+
+Expected:
+- IMPLEMENT,
+- 1–3 repo facts,
+- relevant files/symbols,
+- targeted tests.
+
+INTERMITTENT BUG
+
+Expected:
+- INVESTIGATE,
+- small code neighborhood,
+- failing evidence,
+- branch checkpoints.
+
+REACT PERFORMANCE
+
+Expected:
+- INVESTIGATE,
+- relevant React performance subsection only,
+- measurement,
+- OPTIMIZE,
+- VERIFY.
+
+VISUAL CHANGE
+
+Expected:
+- visual context,
+- frontend reference if needed,
+- browser,
+- one render/review,
+- one confirmation.
+
+DATABASE MIGRATION / RLS
+
+Expected:
+- database/security reference,
+- strong repo rules,
+- targeted evidence,
+- preservation checks.
+
+
+======================================================================
+95. LAZY RUNTIME METAPHOR
+======================================================================
+
+Gauntlet should behave like:
+
+    a lazy runtime for engineering intelligence
+
+Installed all the time.
+Loaded almost never.
+Precise when needed.
+Cheap when not needed.
+
+
+======================================================================
+96. EVAL PHILOSOPHY
+======================================================================
+
+Gauntlet must be evaluated for both:
+
+INTELLIGENCE
+Did it help?
+
+RESTRAINT
+Did it stay quiet when it should?
+
+A selector that always activates useful things is still bad if:
+- it wastes tokens,
+- adds latency,
+- distracts the agent,
+- over-verifies,
+- over-asks,
+- or activates redundant systems.
+
+
+======================================================================
+97. NORTH-STAR METRIC
+======================================================================
+
+Primary:
+
+CLEAN FIRST-PASS SUCCESS (CFPS)
+
+A task counts only if:
+
+- requested behavior works,
+- existing behavior remains intact,
+- implementation fits repo conventions,
+- unnecessary complexity/debt was not introduced,
+- relevant evidence passes,
+- no repair cycle was needed.
+
+Other major metrics:
+
+- Verified Completion Time,
+- Cost per Verified Task,
+- Attempts / revisions,
+- LoC / files / dependencies,
+- Tokens / cost where available,
+- Gauntlet overhead,
+- Human intervention.
+
+
+======================================================================
+98. SELECTION METRICS
+======================================================================
+
+Track separately:
+
+- false activation rate,
+- missed activation rate,
+- duplicate intervention rate,
+- average activation depth,
+- average active skills,
+- percentage of tasks staying L0–L2,
+- percentage requiring external evidence,
+- percentage where Gauntlet stays silent,
+- percentage of activations that change task state.
+
+Do not collapse to one magic score.
+
+
+======================================================================
+99. MEMORY METRICS
+======================================================================
+
+Track:
+
+- raw event count,
+- checkpoint count,
+- active-path size,
+- rejected-branch count,
+- context reconstructed from active path,
+- tokens removed by compaction,
+- repeated rejected approaches,
+- task success after branch revision.
+
+Goal:
+preserve useful decision structure while reducing historical transcript exposure.
+
+
+======================================================================
+100. CODE-INTELLIGENCE METRICS
+======================================================================
+
+Measure:
+
+- cold shallow-index cost,
+- warm startup,
+- changed-file update cost,
+- index disk size,
+- impact-query latency,
+- caller/test precision,
+- existing-capability discoveries,
+- structural-rule violations detected.
+
+Do not optimize for graph size.
+
+Optimize for useful engineering decisions.
+
+
+======================================================================
+101. CONTEXT METRICS
+======================================================================
+
+Measure:
+
+- tokens supplied,
+- files loaded,
+- symbol ranges loaded,
+- duplicate facts,
+- reference→concise expansions,
+- concise→detailed expansions,
+- repeat reads,
+- repeat searches,
+- compactions,
+- external lookups avoided.
+
+Goal:
+
+    equal or better outcome
+    with less active context
+
+
+======================================================================
+102. OUTPUT-CONDITIONING METRICS
+======================================================================
+
+Track:
+
+- raw output size,
+- model-visible output size,
+- tokens removed,
+- actionable failures preserved,
+- evidence refs generated.
+
+Output conditioning should often make Gauntlet net-token-negative.
+
+
+======================================================================
+103. SILENCE EVALS
+======================================================================
+
+Cases:
+
+- README typo,
+- rename local variable,
+- one-line obvious fix,
+- mechanical internal change.
+
+Expected:
+
+- 0 questions,
+- 0 extra LLM calls,
+- 0 domain refs,
+- 0 browser,
+- 0 delegation,
+- 0 graph deepening unless necessary,
+- cheap verification only.
+
+Silence should be a release gate.
+
+
+======================================================================
+104. DYNAMIC WORKFLOW EVALS
+======================================================================
+
+Test:
+
+    IMPLEMENT
+    ↓
+    repeated unresolved failure
+    ↓
+    INVESTIGATE
+    ↓
+    root cause checkpoint
+    ↓
+    IMPLEMENT
+
+Ensure:
+- old skill unloads,
+- new skill loads only when needed,
+- no contradictory simultaneous workflow.
+
+
+======================================================================
+105. EXECUTION-STATE EVALS
+======================================================================
+
+Test:
+
+    valid path + rejected branch
+
+Reconstructed context should:
+- include validated state,
+- include current active branch,
+- exclude rejected branch detail,
+- include tiny rejected-direction warning only when relevant.
+
+
+======================================================================
+106. FAILED-BRANCH CONTAMINATION EVAL
+======================================================================
+
+Create task with:
+- correct approach,
+- tempting failed competing approach.
+
+Compare:
+- flat transcript,
+- semantic retrieval,
+- active-path state.
+
+Measure:
+- repeated rejected approach,
+- context tokens,
+- repair cycles,
+- completion success.
+
+
+======================================================================
+107. COMPLEMENTARY-EVIDENCE EVALS
+======================================================================
+
+Construct cases where:
+
+- one evidence view is insufficient,
+- all evidence views are wasteful,
+- a small combination is optimal.
+
+Example:
+
+    execution state
+    +
+    failing test
+    +
+    two graph nodes
+
+Compare against:
+- execution only,
+- everything.
+
+Measure:
+- task success,
+- context tokens,
+- repair cycles.
+
+
+======================================================================
+108. MARGINAL-CONTEXT EVALS
+======================================================================
+
+Compare:
+
+relevance-only retrieval
+vs
+marginal-information selection
+
+Measure:
+- context tokens,
+- duplicate facts,
+- task result,
+- repair cycles.
+
+Gauntlet should often use less context with equal/better outcomes.
+
+
+======================================================================
+109. API-RESOLUTION EVALS
+======================================================================
+
+Cases:
+
+- answer in repo usage,
+- answer in installed types,
+- answer in installed source,
+- answer requires external docs.
+
+Expected:
+- stop at earliest sufficient authoritative level.
+
+
+======================================================================
+110. DOMAIN-ROUTING EVALS
+======================================================================
+
+Repo has:
+React + Postgres.
+
+README task:
+- domain activations = 0.
+
+React performance task:
+- relevant React reference only.
+
+Database policy task:
+- relevant DB/security reference only.
+
+
+======================================================================
+111. RISK-AWARE EVIDENCE EVALS
+======================================================================
+
+Test low-risk and high-risk versions of similar uncertainty.
+
+Gauntlet should not:
+- under-verify risky changes,
+- over-verify trivial changes.
+
+
+======================================================================
+112. COLLABORATION EVALS
+======================================================================
+
+Evaluate:
+
+REPO FIT
+Does it respect local conventions?
+
+QUALITY
+Is implementation reliable?
+
+PROBLEM SOLVING
+Does it investigate / implement efficiently?
+
+COLLABORATION
+Does it ask only useful questions and respect developer intent?
+
+Also track:
+- questions asked,
+- questions that changed outcome,
+- unnecessary interruptions.
+
+
+======================================================================
+113. REAL END-TO-END FIXTURES
+======================================================================
+
+Before adding much more intelligence, build 10–20 realistic fixture repositories/tasks.
+
+Include:
+
+- README typo,
+- local rename,
+- simple deterministic bug,
+- duplicate helper temptation,
+- unnecessary dependency temptation,
+- repo-layer bypass,
+- repeated wrong bug fix,
+- regression test that does not detect old bug,
+- unknown package API,
+- public API change,
+- large-impact symbol change,
+- DB/security policy change,
+- UI task requiring rendered verification,
+- long debugging trajectory with failed branch,
+- performance regression.
+
+Compare:
+
+    agent alone
+    vs
+    agent + Gauntlet
+
+Prefer multiple runs where affordable.
+
+
+======================================================================
+114. HISTORICAL EVAL GENERATION
+======================================================================
+
+Later, derive evals from real git history.
+
+Conceptually:
+
+    known merged change
+    ↓
+    recover pre-change state
+    ↓
+    derive task
+    ↓
+    retain known-good final change
+    ↓
+    validate environment
+    ↓
+    run baseline
+    ↓
+    run Gauntlet
+
+This should remain an internal development/eval tool first.
+
+Do not build a giant benchmark platform.
+
+
+======================================================================
+115. EXPERIENCE-COMPILER EVAL LOOP
+======================================================================
+
+Use real eval tasks to validate any learned behavior change.
+
+Loop:
+
+    traces
+    ↓
+    persistent knowledge
+    ↓
+    one candidate change
+    ↓
+    eval suite
+    ↓
+    compare baseline
+    ↓
+    keep / rollback
+
+The persistent knowledge should survive even when the candidate change is rejected.
+
+Example:
+
+Proposal:
+Activate INVESTIGATE after every failed test.
+
+Eval result:
+Too many false activations.
+
+Rollback proposal.
+
+Keep knowledge:
+A single failure is insufficient evidence for investigation escalation.
+
+This prevents the system from rediscovering the same bad meta-policy.
+
+
+======================================================================
+116. ABLATIONS
+======================================================================
+
+Compare full Gauntlet against versions without:
+
+- execution-state tree,
+- code intelligence,
+- marginal context,
+- precise skills,
+- repo rules,
+- output conditioning,
+- evidence views,
+- progress tracking.
+
+Ablation is more useful than feature-count growth.
+
+If removing a subsystem does not measurably hurt:
+- tighten it,
+- make it optional,
+- or remove it.
+
+
+======================================================================
+117. INTERACTION EVALS
+======================================================================
+
+Test redundancy/conflict between:
+
+- IMPLEMENT reuse guidance,
+- repo facts,
+- code graph,
+- domain references,
+- rules.
+
+Ensure the context governor fuses overlapping information instead of repeating it.
+
+Also test:
+- multiple useful evidence views,
+- skill + domain reference,
+- execution state + repo graph,
+- browser + UI reference,
+- API knowledge + installed types.
+
+
+======================================================================
+118. FEATURE PERMANENCE TEST
+======================================================================
+
+A mechanism earns normal status only if it shows:
+
+    better task outcome
+    +
+    acceptable runtime/context overhead
+    +
+    low false activation
+    +
+    useful behavior across enough tasks
+
+Otherwise:
+
+    tighten trigger
+    make optional
+    keep experimental
+    or remove
+
+
+======================================================================
+119. RESEARCH-DERIVED MECHANISMS TO KEEP
+======================================================================
+
+The combined architecture should retain these mechanisms:
+
+- adaptive composition of evidence structures,
+- active-path execution memory,
+- failed-branch quarantine,
+- horizon reduction at validated boundaries,
+- incremental repository representation,
+- impact-aware planning only for broad changes,
+- progressive context disclosure,
+- small high-level agent tools,
+- progress/stall monitoring,
+- real-history-derived evals,
+- preservation-oriented verification,
+- evidence-based proactivity,
+- professional behavior eval dimensions,
+- experience-to-knowledge-to-procedure compilation,
+- atomic validated behavior evolution,
+- rollback of behavior changes while preserving learned knowledge.
+
+
+======================================================================
+120. RESEARCH MAP — WHAT TO TAKE
+======================================================================
+
+MAGE / execution-state memory
+
+Take:
+- active valid path,
+- branch revision,
+- failed-branch isolation,
+- long-horizon state reconstruction.
+
+Do not copy:
+- every implementation detail,
+- model-heavy validation where machine evidence works.
+
+MESA / multi-structure evidence selection
+
+Take:
+- select complementary evidence structures dynamically,
+- avoid one-size-fits-all memory,
+- avoid loading all structures.
+
+Do not copy:
+- heavyweight generalized memory stack if simpler views suffice.
+
+Memora-style abstraction
+
+Take:
+- rich stored values behind small handles/cues,
+- expand only when needed.
+
+Do not copy:
+- broad memory complexity if a simple handle layer works.
+
+CodePlan
+
+Take:
+- impact-aware planning for distributed changes.
+
+Do not copy:
+- mandatory planning for local tasks.
+
+Incremental repository representation research
+
+Take:
+- persistent shallow index,
+- changed-file update,
+- progressive deepening.
+
+Do not copy:
+- exhaustive graph maintenance.
+
+Change2Task
+
+Take:
+- derive realistic eval tasks from historical repo changes.
+
+Do not copy:
+- benchmark infrastructure beyond Gauntlet’s needs.
+
+Magentic-One-style task/progress distinction
+
+Take:
+- stable task state vs live progress,
+- replan on stall.
+
+Do not copy:
+- multi-agent architecture by default.
+
+WikiSkill
+
+Take:
+- raw traces → persistent knowledge → one atomic behavior proposal → eval → keep/rollback,
+- knowledge survives rejected behavior changes.
+
+Do not copy:
+- runtime-heavy skill evolution inside normal user tasks.
+
+Anthropic context engineering
+
+Take:
+- finite attention,
+- just-in-time retrieval,
+- pointer first / detail later.
+
+Anthropic tool design
+
+Take:
+- fewer higher-level tools,
+- compact outputs,
+- token-aware tool interfaces.
+
+Google proactive coding
+
+Take:
+- decide what insight is worth surfacing,
+- evidence-based proactivity.
+
+Google collaboration taxonomy
+
+Take:
+- evaluate repo fit, quality, problem solving, collaboration.
+
+SWE-Lancer / realistic software tasks
+
+Take:
+- real end-to-end engineering evals.
+
+CodeMender-style preservation thinking
+
+Take:
+- prove both desired change and preserved behavior.
+
+
+======================================================================
+121. REPO MAP — WHAT TO TAKE / WHAT NOT TO TAKE
+======================================================================
+
+SUPERPOWERS
+
+Take:
+- precise reusable workflows,
+- verification/exit discipline,
+- skill evals,
+- behavioral skill content.
+
+Do not take:
+- mandatory full workflow on every task.
+
+CONTEXT MODE
+
+Take:
+- raw tool output kept out of context,
+- selective retrieval,
+- session continuity,
+- token-conscious outputs.
+
+Do not take:
+- use semantic/search memory as task execution truth.
+
+OPENVIKING
+
+Take:
+- hierarchical context,
+- addressability,
+- progressive retrieval.
+
+Do not take:
+- require a dedicated context database.
+
+PONYTAIL
+
+Take:
+- reuse/minimality,
+- resist speculative abstractions,
+- dense behaviorally precise prompts.
+
+Do not take:
+- reduce Gauntlet to “write less code.”
+
+RUFLO
+
+Take:
+- capability registry,
+- hooks,
+- provider routing,
+- model tiers,
+- optional workers.
+
+Do not take:
+- hundreds of model-facing tools,
+- always-on swarms,
+- giant memory/RAG default surface.
+
+LEARN CLAUDE CODE
+
+Take:
+- clean distinction between model and harness,
+- simple agent mechanics.
+
+Do not take:
+- build another coding agent.
+
+GSTACK
+
+Take:
+- deep opinionated engineering knowledge,
+- specialized workflow content.
+
+Do not take:
+- dozens of user-facing roles/commands.
+
+GRAPHIFY
+
+Take:
+- structural repo graph,
+- impact reasoning,
+- queryable code relationships.
+
+Do not take:
+- exhaustive graph as default requirement.
+
+OPENCODE
+
+Take:
+- harness / integration architecture,
+- real-world host compatibility.
+
+Do not take:
+- compete with coding agent.
+
+AGENT SKILLS
+
+Take:
+- strong process-oriented skill content,
+- anti-patterns,
+- verification guidance,
+- exit criteria.
+
+Do not take:
+- expose dozens of Gauntlet top-level skills.
+
+AGENCY AGENTS
+
+Take:
+- reusable domain expertise is valuable,
+- expert context can be packaged,
+- multiple perspectives can improve work.
+
+Do not take:
+- 140+ visible personas,
+- persona backstory,
+- agent-team theater for normal tasks.
+
+
+======================================================================
+122. PRODUCT BOUNDARY
+======================================================================
+
+Useful clean boundary:
+
+CODING AGENT
+Does the work.
+
+GAUNTLET
+Decides what additional engineering intelligence is worth providing.
+
+PROVIDERS / KNOWLEDGE / GRAPH / TOOLS
+Supply evidence and capability when selected.
+
+MODEL
+Provides reasoning capability.
+
+HARNESS
+Provides execution agency.
+
+GAUNTLET
+Provides engineering control.
+
+
+======================================================================
+123. IMPLEMENTATION PRIORITY — STRICT ORDER
+======================================================================
+
+Do not add broad new intelligence until the current architecture composes correctly.
+
+PHASE 1 — FIX CONTROL COMPOSITION
+
+Implement:
+- ActivationCandidate,
+- ActivationPlan,
+- EvidenceView,
+- single elimination/selection policy,
+- selection trace.
+
+Refactor current skill routing, capability selection, context expansion, domain selection, and verification selection to generate candidates rather than force activation.
+
+Goal:
+one final control decision.
+
+PHASE 2 — MAKE EXECUTION BOUNDARIES REAL
+
+Implement:
+- agent state-report primitive,
+- adapter support,
+- meaningful checkpoint creation,
+- active-path reconstruction,
+- rejected-branch overlap warnings.
+
+Goal:
+execution memory functions during real coding sessions, not only tests.
+
+PHASE 3 — ADD PROGRESS STATE
+
+Implement:
+- stable task state,
+- live progress state,
+- progress delta,
+- STALLED / REGRESSED detection.
+
+Wire:
+STALLED → INVESTIGATE / branch revision when appropriate.
+
+PHASE 4 — PERSIST SHALLOW CODE INDEX
+
+Implement:
+- file fingerprints,
+- imports,
+- exports,
+- tests,
+- basic symbols,
+- incremental changed-file update.
+
+No embeddings.
+No DB.
+No daemon.
+
+PHASE 5 — WORKING GRAPH + IMPACT
+
+Implement:
+- ensureDepth(),
+- impact(),
+- public-surface detection,
+- dependents,
+- affected tests.
+
+Wire impact into:
+- context,
+- planning,
+- review,
+- verification.
+
+PHASE 6 — WIRE CAPABILITIES
+
+Make current:
+- CapabilityRegistry,
+- CapabilityResolver,
+- knowledge resolver,
+- provider interfaces
+
+drive real uncertainty resolution.
+
+Do not add more provider abstractions until these influence runtime decisions.
+
+PHASE 7 — CONCEPTUAL MARGINAL CONTEXT
+
+Replace path-level novelty with:
+- contribution identities,
+- evidence-view fusion,
+- idea deduplication.
+
+PHASE 8 — RISK-AWARE EVIDENCE
+
+Integrate:
+- uncertainty,
+- impact,
+- preservation requirements,
+- available evidence,
+- task/change kind.
+
+Avoid overblocking low-risk work.
+
+PHASE 9 — REAL END-TO-END EVAL FIXTURES
+
+Build:
+10–20 realistic tasks.
+
+Compare:
+baseline vs Gauntlet.
+
+PHASE 10 — EXPERIENCE COMPILER SCAFFOLD
+
+Implement:
+- cross-task pattern storage,
+- observed/supported/promoted lifecycle,
+- one atomic candidate change,
+- eval gate,
+- behavior rollback,
+- knowledge persistence.
+
+Keep offline / eval-time first.
+
+PHASE 11 — HISTORICAL EVAL GENERATION
+
+Derive realistic tasks from known historical changes.
+
+Keep internal first.
+
+PHASE 12 — DOMAIN / EXTERNAL EXPANSION
+
+Only after architecture is proven:
+- React references,
+- database references,
+- browser provider,
+- external docs,
+- other specialist intelligence.
+
+Every new domain/provider must pass:
+- activation eval,
+- outcome eval,
+- overhead eval.
+
+
+======================================================================
+124. ARCHITECTURE ACCEPTANCE SCENARIOS
+======================================================================
+
+SCENARIO A — README TYPO
+
+Expected:
+- no skill,
+- no graph expansion,
+- no docs,
+- no domain ref,
+- no browser,
+- no delegation,
+- cheap diff/static check.
+
+SCENARIO B — REPEATED FAILURE
+
+Normal IMPLEMENT task.
+Behavioral failure persists.
+
+Expected:
+- progress becomes STALLED,
+- active branch reconsidered,
+- INVESTIGATE activates,
+- no task restart.
+
+SCENARIO C — API UNCERTAINTY
+
+Agent proposes unfamiliar API.
+
+Expected:
+- repo usage,
+- installed types,
+- resolved,
+- no external docs.
+
+SCENARIO D — FAILED BRANCH CONTAMINATION
+
+Attempt A rejected.
+Attempt B active.
+
+Expected context:
+- validated path,
+- current B.
+
+Not:
+- full A transcript.
+
+A warning about A appears only if B repeats it.
+
+SCENARIO E — BROAD PUBLIC CHANGE
+
+Public symbol has many dependents.
+
+Expected:
+- larger impact cone,
+- compact change frontier if needed,
+- stronger verification.
+
+Not:
+- arbitrary full-repo planning.
+
+SCENARIO F — DUPLICATE HELPER
+
+Agent starts creating retry helper.
+
+Expected:
+- existing capability discovered,
+- one small reuse hint,
+- no huge graph dump.
+
+SCENARIO G — VISUAL FEATURE
+
+VISUAL uncertainty survives implementation.
+
+Expected:
+- browser activates only then,
+- one inspection,
+- one confirmation if necessary.
+
+SCENARIO H — LONG BUG WITH WRONG TURN
+
+Expected:
+- rejected implementation branch preserved,
+- valid cause retained,
+- new branch starts from valid boundary,
+- failed history not reintroduced.
+
+SCENARIO I — EXPERIENCE EVOLUTION
+
+Repeated tasks reveal one recurring failure pattern.
+
+Expected:
+- persistent knowledge entry,
+- one atomic selector/skill/reference proposal,
+- eval,
+- keep or rollback,
+- knowledge survives either outcome.
+
+
+======================================================================
+125. LIGHTWEIGHT BUDGETS
+======================================================================
+
+CONTROL
+
+Default:
+deterministic update only.
+
+Trigger:
+meaningful uncertainty/state change.
+
+Stop:
+minimal activation plan selected.
+
+No router LLM by default.
+
+EXECUTION STATE
+
+Default:
+small event stream + few checkpoints.
+
+Trigger:
+long task / failure / major boundary.
+
+Stop:
+current valid state reconstructed.
+
+CODE INTELLIGENCE
+
+Default:
+cached shallow index.
+
+Trigger:
+unknown ownership / impact / cross-file / duplicate capability.
+
+Stop:
+working neighborhood sufficient.
+
+CONTEXT
+
+Default:
+task + active state + few facts + few code refs.
+
+Trigger:
+remaining uncertainty.
+
+Stop:
+additional context adds no new decision-relevant information.
+
+TECHNICAL KNOWLEDGE
+
+Default:
+none.
+
+Trigger:
+API uncertainty.
+
+Stop:
+local authoritative evidence resolves question.
+
+EVIDENCE
+
+Default:
+diff + static checks + affected evidence.
+
+Trigger:
+risk/impact.
+
+Stop:
+more evidence unlikely to change acceptance.
+
+BROWSER
+
+Default:
+off.
+
+Trigger:
+visual/interaction uncertainty.
+
+Typical maximum:
+one inspection + one confirmation.
+
+DELEGATION
+
+Default:
+off.
+
+Trigger:
+bounded independent work with real benefit.
+
+Initial max:
+one worker.
+
+EXPERIENCE COMPILATION
+
+Default runtime:
+off.
+
+Trigger:
+offline/eval cycle with enough accumulated experience.
+
+Stop:
+one atomic candidate proposal evaluated.
+
+
+======================================================================
+126. WHAT NOT TO BUILD NOW
+======================================================================
+
+Do not build:
+
+- whole-repo semantic knowledge graph,
+- embedding pipeline by default,
+- vector database,
+- always-running index daemon,
+- full documentation mirror,
+- giant generated repo wiki,
+- autonomous planning agent,
+- router LLM,
+- multi-agent reviewer swarm,
+- multi-agent debate,
+- permanent browser worker,
+- all-domain knowledge library at once,
+- background skill evolution during user tasks,
+- dashboard-first product,
+- complex policy DSL,
+- huge prompt library,
+- mandatory skill every request,
+- mandatory brainstorm/spec/plan/TDD/review,
+- full-repo packing,
+- unlimited mutation testing,
+- mandatory Gherkin,
+- built-in VM,
+- RTK clone,
+- tgrep clone,
+- LangChain-style app,
+- plugin manager as core identity.
+
+The current challenge is composition, not breadth.
+
+
+======================================================================
+127. SUGGESTED MODULE RESPONSIBILITIES
+======================================================================
+
+Do not refactor solely to match this layout.
+
+Conceptually:
+
+src/
+  control/
+    selector.ts
+    uncertainty.ts
+    escalation.ts
+    budget.ts
+    trace.ts
+    activation.ts
+
+  execution-state/
+    checkpoints.ts
+    events.ts
+    branches.ts
+    reconstruct.ts
+    revise.ts
+    progress.ts
+
+  intelligence/
+    index.ts
+    files.ts
+    symbols.ts
+    edges.ts
+    impact.ts
+    working-graph.ts
+
+  knowledge/
+    packages.ts
+    resolver.ts
+    cache.ts
+    patterns.ts
+    evolution.ts
+
+  context/
+    governor.ts
+    marginality.ts
+    dedupe.ts
+    compact.ts
+    evidence-views.ts
+
+  capabilities/
+    registry.ts
+    resolver.ts
+
+  domains/
+    resolver.ts
+    references.ts
+
+  verify/
+    evidence-selector.ts
+    impacted-tests.ts
+    repo-rules.ts
+    baselines.ts
+    counterfactual.ts
+    preservation.ts
+
+  measure/
+    metrics.ts
+    roi.ts
+
+  adapters/
+    ...
+
+skills/
+  UNDERSTAND
+  INVESTIGATE
+  IMPLEMENT
+  VERIFY
+  REVIEW
+  OPTIMIZE
+
+evals/
+  fixtures/
+  routing/
+  memory/
+  context/
+  intelligence/
+  verification/
+  evolution/
+
+
+======================================================================
+128. FINAL RUNTIME MODEL
+======================================================================
+
+ORDINARY TASK
+
+TASK START
+   │
+   ▼
+load tiny stable state
+   │
+   ▼
+cheap uncertainty update
+   │
+   ▼
+load active execution state
+   │
+   ▼
+tiny repo/code working set
+   │
+   ▼
+generate candidates
+   │
+   ▼
+select minimal intervention
+   │
+   ├── maybe no skill
+   ├── maybe one skill
+   └── maybe one local search/check
+   │
+   ▼
+agent works
+   │
+   ├── cheap events
+   ├── incremental index updates
+   └── output conditioning
+   │
+   ▼
+meaningful boundary?
+   │
+   ├── no → continue
+   └── yes → checkpoint
+   │
+   ▼
+before_stop
+   │
+   ├── active path
+   ├── final diff
+   ├── impact cone
+   ├── repo rules
+   ├── baseline delta
+   ├── preservation
+   └── cheapest sufficient evidence
+   │
+   ▼
+DONE
+
+
+======================================================================
+129. HARD-TASK RUNTIME MODEL
+======================================================================
+
+TASK
+   │
+   ▼
+CAUSE open
+   │
+   ▼
+INVESTIGATE
+   │
+   ▼
+working graph expansion
+   │
+   ▼
+cause validated
+════════════════════
+horizon shortened
+   │
+   ▼
+IMPLEMENT
+   │
+   ▼
+attempt A fails
+   │
+   ▼
+branch rejected
+   │
+   ▼
+return to valid boundary
+   │
+   ▼
+attempt B
+   │
+   ▼
+implementation validated
+════════════════════
+horizon shortened
+   │
+   ▼
+VERIFY
+   │
+   ▼
+targeted evidence
+   │
+   ▼
+DONE
+
+
+======================================================================
+130. EXPERIENCE-COMPILATION RUNTIME
+======================================================================
+
+NORMAL TASKS PRODUCE:
+
+raw evidence
+execution checkpoints
+selection traces
+successes
+failures
+rejected branches
+verification outcomes
+
+             │
+             ▼
+
+OFFLINE CONSOLIDATION
+
+recurring failures
+successful strategies
+bad activations
+good activations
+repo lessons
+domain lessons
+
+             │
+             ▼
+
+PERSISTENT KNOWLEDGE
+
+observed
+supported
+promoted candidates
+
+             │
+             ▼
+
+ONE ATOMIC CHANGE
+
+skill
+selector
+rule
+reference
+evidence policy
+context policy
+
+             │
+             ▼
+
+EVAL SUITE
+
+better?
+├── yes → retain behavior change
+└── no  → rollback behavior change
+
+Persistent knowledge survives either way.
+
+
+======================================================================
+131. FINAL METRIC HIERARCHY
+======================================================================
+
+PRIMARY
+
+Clean First-Pass Success.
+
+EFFICIENCY
+
+- Verified Completion Time,
+- Cost per Verified Task,
+- repair cycles,
+- context tokens,
+- Gauntlet overhead.
+
+SELECTION
+
+- false activations,
+- missed activations,
+- duplicate interventions,
+- average active interventions,
+- percent local/cheap tasks.
+
+EXECUTION MEMORY
+
+- active-path tokens,
+- checkpoint count,
+- rejected-branch repetitions,
+- compaction savings.
+
+CODE INTELLIGENCE
+
+- warm startup,
+- incremental-index cost,
+- impact usefulness,
+- affected-test usefulness,
+- existing-capability discoveries.
+
+COLLABORATION
+
+- questions asked,
+- questions that changed outcome,
+- unnecessary interruptions,
+- repo-rule adherence.
+
+EVOLUTION
+
+- candidate behavior changes proposed,
+- percent rejected,
+- percent retained,
+- measured improvement,
+- repeated meta-mistakes avoided.
+
+No single magic score.
+
+
+======================================================================
+132. FINAL PRODUCT ARCHITECTURE
+======================================================================
+
+               HUGE AVAILABLE INTELLIGENCE
+
+workflow knowledge
+repo knowledge
+execution memory
+code relationships
+technical references
+domain expertise
+browser evidence
+provider ecosystem
+verification techniques
+validated experience
+
+                       │
+                       ▼
+
+                 CONTROL PLANE
+
+remaining uncertainty
+validated state
+task impact
+evidence already held
+available capabilities
+runtime budget
+
+                       │
+                       ▼
+
+              MINIMAL ACTIVE SET
+
+maybe one skill
+maybe one graph expansion
+maybe one repo fact
+maybe one reference
+maybe one targeted test
+maybe nothing
+
+                       │
+                       ▼
+
+                     AGENT
+
+                       │
+                       ▼
+
+              EVIDENCE + CHECKPOINT
+
+                       │
+                       ▼
+
+                     DONE
+
+Longer-term:
+
+                     DONE
+                       │
+                       ▼
+                 EXPERIENCE
+                       │
+                       ▼
+              PERSISTENT KNOWLEDGE
+                       │
+                       ▼
+             ONE VALIDATED IMPROVEMENT
+                       │
+                       ▼
+               BETTER NEXT RUN
+
+
+======================================================================
+133. FINAL PRODUCT IDENTITY
+======================================================================
+
+Gauntlet should not become:
+
+    Superpowers
+    + Context7
+    + CodeGraph
+    + memory
+    + browser
+    + expert personas
+    + multi-agent orchestration
+
+all running simultaneously.
+
+That would be a bad product.
+
+The target is:
+
+    The useful intelligence of all of those categories
+    under one adaptive, evidence-driven runtime
+    that activates only the minimum required
+    for the current engineering problem.
+
+The value is not merely that Gauntlet contains powerful systems.
+
+The value is that Gauntlet knows:
+
+- which intelligence matters,
+- when it matters,
+- how deeply it should activate,
+- what has already been established,
+- which paths have already failed,
+- what evidence is still missing,
+- what additional context is redundant,
+- what capability is dominated by a cheaper one,
+- and when to stop.
+
+
+======================================================================
+134. FINAL GOVERNING RULES
+======================================================================
+
+Know a lot. Load a little.
+
+Store richly. Index cheaply. Select dynamically. Expand reluctantly.
+
+Put sophistication in selection, not in the default workflow.
+
+Memory for facts should be retrieved. Memory for work should be resumed.
+
+Preserve the valid execution path. Quarantine failed branches.
+
+Validate a boundary, shorten the horizon, then continue from the valid state.
+
+Experience may accumulate freely. Behavior must earn promotion.
+
+Rejected behavior changes are still useful knowledge.
+
+Context should add information, not merely relevance.
+
+Different evidence structures may be complementary; use the smallest useful combination.
+
+Skills control behavior.
+
+References supply expert knowledge.
+
+Repository facts supply local truth.
+
+Execution state supplies current-task truth.
+
+Code intelligence supplies structure.
+
+Technical knowledge resolves API/platform uncertainty.
+
+Evidence determines completion.
+
+Use deterministic evidence before model reasoning.
+
+Discover before building.
+
+Observe before modifying.
+
+Reuse before creating.
+
+Build repository understanding progressively from actual tasks.
+
+External documentation is escalation, not default context.
+
+A useful provider does not need to activate merely because it exists.
+
+Impact should determine planning and verification depth.
+
+Progress means uncertainty or evidence improved, not that more code was written.
+
+Verification must prove both desired change and preserved behavior.
+
+Delegation is a rare optimization.
+
+Silence is a first-class successful behavior.
+
+Real engineering tasks should decide whether Gauntlet’s architecture is actually useful.
+
+Every major subsystem must have:
+- a cheap path,
+- an escalation trigger,
+- a stop condition,
+- and an eval proving it earns its cost.
+
+And above all:
+
+    Gauntlet can know far more than it ever shows the agent.
+
+The ultimate Gauntlet should have a huge engineering brain
+with an extremely small working memory.
+
+
+======================================================================
+135. STRICT NEXT-STEP SEQUENCE
+======================================================================
+
+Protect this order:
+
+FIX SELECTION
+↓
+MAKE EXECUTION STATE REAL
+↓
+ADD PROGRESS / STALL DETECTION
+↓
+PERSIST LIGHTWEIGHT CODE INTELLIGENCE
+↓
+WIRE EXISTING CAPABILITIES
+↓
+IMPROVE MARGINAL CONTEXT
+↓
+MAKE EVIDENCE RISK-AWARE
+↓
+BUILD REAL EVALS
+↓
+ADD EXPERIENCE COMPILATION
+↓
+ONLY THEN ADD MORE INTELLIGENCE
+
+Do not let exciting new repos or papers distract from composition.
+
+The architecture already has enough ideas.
+
+The next advantage comes from making the existing ideas work together,
+measuring them,
+and allowing only proven improvements to graduate into the runtime.
+
+END OF HANDOFF
