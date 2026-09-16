@@ -82,6 +82,16 @@ test("validated cause resumes implementation on the active execution path", asyn
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("structured state reports populate execution checkpoints", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-report-"));
+  try {
+    await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Fix race in source.ts", "report");
+    const result = await engine.activity("report", { kind: "decision_signal", outcome: "pass", outputBytes: 0, report: { kind: "cause_validated", summary: "missing coalescing", constraints: ["preserve cancellation"], relevantFiles: ["source.ts"], relevantSymbols: ["value"], evidenceRefs: ["test:race"] } });
+    const checkpoint = result.state.session?.execution?.checkpoints.at(-1);
+    assert.equal(checkpoint?.summary, "missing coalescing"); assert.deepEqual(checkpoint?.constraints, ["preserve cancellation"]); assert.deepEqual(checkpoint?.relevantFiles, ["source.ts"]); assert.deepEqual(checkpoint?.evidenceRefs, ["test:race"]);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("workflow transitions do not consume the compaction budget", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-workflow-budget-"));
   try {

@@ -1,11 +1,21 @@
 import { z } from "zod";
 
+export const stateReportSchema = z.object({
+  kind: z.enum(["hypothesis", "cause_validated", "implementation_selected", "approach_rejected", "verification"]),
+  summary: z.string().min(1).max(1_000),
+  constraints: z.array(z.string().max(500)).max(20).default([]),
+  relevantFiles: z.array(z.string().max(500)).max(50).default([]),
+  relevantSymbols: z.array(z.string().max(500)).max(50).default([]),
+  evidenceRefs: z.array(z.string().max(500)).max(50).default([]),
+});
+
 export const activitySchema = z.object({
   kind: z.enum(["command", "file_read", "file_write", "search", "test_result", "diff_change", "decision_signal", "message"]),
   target: z.string().optional(),
   outcome: z.enum(["pass", "fail", "unknown"]).optional(),
   outputBytes: z.number().int().nonnegative().default(0),
   evidenceRef: z.string().optional(),
+  report: stateReportSchema.optional(),
 });
 
 const base = z.object({
@@ -23,6 +33,7 @@ export const eventSchema = z.discriminatedUnion("type", [
 
 export type GauntletEvent = z.infer<typeof eventSchema>;
 export type TaskActivity = z.infer<typeof activitySchema>;
+export type StateReport = z.infer<typeof stateReportSchema>;
 
 export interface TaskContract {
   intent: string;

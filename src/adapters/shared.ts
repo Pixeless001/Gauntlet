@@ -21,7 +21,8 @@ function activity(value: NativeEvent, repository: string, failed: boolean) {
   const command = text(input.command) ?? text(value.command);
   const kind = /(?:read|view|cat|open_file)/.test(lower) ? "file_read" : /(?:edit|write|patch|notebook)/.test(lower) ? "file_write" : /(?:bash|shell|terminal|command|exec)/.test(lower) || command ? "command" : "message";
   const target = kind === "command" ? normalizeCommand(command ?? name) : path ?? name;
-  return { kind, target: target.slice(0, 500), outcome: failed ? "fail" as const : "pass" as const, outputBytes: JSON.stringify(value.tool_response ?? value.result ?? value.error_message ?? "").length };
+  const report = record(input.gauntlet_state ?? value.gauntlet_state);
+  return { kind: Object.keys(report).length ? "decision_signal" as const : kind, target: target.slice(0, 500), outcome: failed ? "fail" as const : "pass" as const, outputBytes: JSON.stringify(value.tool_response ?? value.result ?? value.error_message ?? "").length, ...(Object.keys(report).length ? { report } : {}) };
 }
 
 function normalizePath(repository: string, path: string): string {
