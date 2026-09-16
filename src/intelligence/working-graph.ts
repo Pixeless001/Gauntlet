@@ -1,7 +1,14 @@
 import type { StructuralIndex } from "./index.js";
+import type { InterventionCandidate } from "../control/selector.js";
+import type { UncertaintyState } from "../control/uncertainty.js";
 
 export type GraphDepth = "file" | "symbol" | "relation";
 export interface WorkingNode { path: string; reason: string; depth: number; confidence?: "high" | "medium" | "low" }
+
+export function graphExpansionCandidate(uncertainty: UncertaintyState, available: boolean): InterventionCandidate | null {
+  const resolves = (["location", "repoFit", "regression"] as const).filter((kind) => uncertainty[kind] === "open" || uncertainty[kind] === "partial");
+  return resolves.length ? { id: "graph:working-impact", kind: "graph-expansion", uncertainty: resolves[0]!, resolves: [...resolves], level: 2, cost: "low", authority: "repository", source: "structural-index", reason: "Resolve ownership, repository fit, or regression impact from the bounded working graph", available } : null;
+}
 
 export function workingGraph(index: StructuralIndex, seeds: string[], maxNodes = 24, maxDepth = 2): WorkingNode[] {
   const output: WorkingNode[] = [], seen = new Set<string>(), queue = [...new Set(seeds)].map((path) => ({ path, reason: "task seed", depth: 0 }));

@@ -29,6 +29,7 @@ import { observeExecution, recordVerification } from "../execution-state/runtime
 import { buildStructuralIndex, updateStructuralIndex } from "../intelligence/index.js";
 import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.js";
 import { domainCandidates } from "../domains/resolver.js";
+import { graphExpansionCandidate } from "../intelligence/working-graph.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
 import { remainingEvidence, type EvidenceKind } from "../verify/evidence-selector.js";
 
@@ -116,11 +117,15 @@ export class GauntletEngine {
     const currentIndex = codeChanges.length ? await createRepoIndex(this.cwd) : state.baseline.index;
     const cachedStructural = currentIndex ? await loadStructuralIndex(this.cwd) : null;
     const structuralTargets = currentIndex?.files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 160) ?? [];
-    const structural = currentIndex && codeChanges.length ? cachedStructural
+    const graphCandidate = state.session?.uncertainty && codeChanges.length ? graphExpansionCandidate(state.session.uncertainty, Boolean(currentIndex)) : null;
+    const graphActivation = graphCandidate && state.session ? planActivation({ uncertainty: state.session.uncertainty!, candidates: [graphCandidate], supplied: [], budget: state.session.budget, used: state.session.interventionsUsed ?? 0, event: state.activities.length, trigger: "before_stop_impact" }) : null;
+    if (graphActivation && state.session) state.session.selectionTraces = [...(state.session.selectionTraces ?? []), graphActivation.trace].slice(-64);
+    const expandGraph = Boolean(graphActivation?.graphExpansions.length);
+    const structural = currentIndex && codeChanges.length && expandGraph ? cachedStructural
       ? await updateStructuralIndex(this.cwd, currentIndex, cachedStructural, codeChanges.map((item) => item.path), 160)
-      : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : cachedStructural ?? undefined;
+      : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : !codeChanges.length ? cachedStructural ?? undefined : undefined;
     if (structural) await saveStructuralIndex(this.cwd, structural);
-    if (structural && state.session) state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1;
+    if (expandGraph && structural && state.session) { state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1; state.session.interventionsUsed = (state.session.interventionsUsed ?? 0) + 1; }
     const plan = selectVerification(await detectRepository(this.cwd), changes, currentIndex?.files, structural, state.session?.uncertainty ? { uncertainty: state.session.uncertainty, budget: state.session.budget, event: state.activities.length } : undefined);
     if (plan.selectionTrace && state.session) state.session.selectionTraces = [...(state.session.selectionTraces ?? []), plan.selectionTrace].slice(-64);
     const results = await runVerification(this.cwd, plan, undefined, state.id);

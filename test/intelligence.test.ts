@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildStructuralIndex, updateStructuralIndex } from "../src/intelligence/index.js";
-import { ensureDepth, impact, workingGraph } from "../src/intelligence/working-graph.js";
+import { ensureDepth, graphExpansionCandidate, impact, workingGraph } from "../src/intelligence/working-graph.js";
 import { selectMarginal } from "../src/context/marginality.js";
 import type { RepoIndex } from "../src/repo/index.js";
 
@@ -34,4 +34,10 @@ test("structural intelligence incrementally replaces changed files and removes d
 
 test("marginal selection rejects relevant but redundant context", () => {
   assert.deepEqual(selectMarginal([{ value: "owner", contributions: ["owner"], cost: 1 }, { value: "same", contributions: ["owner"], cost: 1 }, { value: "test", contributions: ["acceptance"], cost: 1 }], 2), { selected: ["owner", "test"], rejected: ["same"] });
+});
+
+test("graph expansion is proposed only for unresolved structural uncertainty", () => {
+  const uncertainty = { intent: "resolved", location: "partial", cause: "irrelevant", repoFit: "open", api: "irrelevant", behavior: "open", regression: "open", scope: "open", visual: "irrelevant", performance: "irrelevant" } as const;
+  assert.deepEqual(graphExpansionCandidate(uncertainty, true)?.resolves, ["location", "repoFit", "regression"]);
+  assert.equal(graphExpansionCandidate({ ...uncertainty, location: "resolved", repoFit: "resolved", regression: "resolved" }, true), null);
 });
