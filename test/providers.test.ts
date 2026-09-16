@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveDomains } from "../src/domains/resolver.js";
+import { domainCandidates, resolveDomains } from "../src/domains/resolver.js";
+import { planActivation } from "../src/control/selector.js";
+import { initialUncertainty } from "../src/control/uncertainty.js";
+import { DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
 import { compareEval, eligibleForPromotion, silenceResult } from "../src/measure/evals.js";
 
 const profile = { packageManager: "npm", language: ["typescript"], dependencies: ["react"], commands: [], harnesses: [] };
@@ -12,6 +15,14 @@ test("detected domains remain inactive for unrelated work", () => {
 test("typescript alone does not pretend React or UI capability exists", () => {
   const plain = { ...profile, dependencies: [] };
   assert.deepEqual(resolveDomains(plain, { intent: "change a component", acceptanceCriteria: [], constraints: [], explicitPaths: [] }), { detected: [], active: [] });
+});
+
+test("domain detection proposes references without forcing activation", () => {
+  const contract = { intent: "improve React render performance", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, uncertainty = initialUncertainty(contract, "ordinary");
+  const unavailable = domainCandidates(profile, contract), rejected = planActivation({ uncertainty, candidates: unavailable, supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 0, trigger: "test" });
+  assert.deepEqual(rejected.references, []); assert.ok(rejected.trace.rejected.every((item) => item.reason === "unavailable" || item.reason === "irrelevant"));
+  const selected = planActivation({ uncertainty, candidates: domainCandidates(profile, contract, { react: true }), supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 0, trigger: "test" });
+  assert.deepEqual(selected.references.map((item) => item.id), ["reference:react"]);
 });
 
 test("silence evaluations expose concrete overhead measures", () => {
