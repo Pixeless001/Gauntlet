@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { initialUncertainty } from "../src/control/uncertainty.js";
-import { selectInterventions } from "../src/control/selector.js";
+import { planActivation, selectInterventions } from "../src/control/selector.js";
 import { activePath, rejectBranch, rejectedOverlap, type ExecutionCheckpoint } from "../src/execution-state/checkpoints.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
 
@@ -14,6 +14,18 @@ test("selector chooses the cheapest relevant intervention and explains rejection
   ] });
   assert.deepEqual(trace.selected, ["search"]);
   assert.deepEqual(trace.rejected, [{ id: "browser", reason: "irrelevant" }, { id: "docs", reason: "dominated" }]);
+});
+
+test("activation plan composes complementary candidate kinds", () => {
+  const uncertainty = initialUncertainty({ intent: "Fix a broken visual regression", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 3 }, used: 0, event: 0, trigger: "test", candidates: [
+    { id: "skill:investigate", kind: "skill", skill: "investigate", uncertainty: "cause", resolves: ["cause"], level: 3, cost: "low", available: true },
+    { id: "browser", kind: "capability", uncertainty: "visual", resolves: ["visual"], level: 4, cost: "medium", available: true },
+    { id: "duplicate-cause", kind: "reference", uncertainty: "cause", resolves: ["cause"], level: 4, cost: "high", available: true },
+  ] });
+  assert.deepEqual(plan.skills.map((item) => item.id), ["skill:investigate"]);
+  assert.deepEqual(plan.capabilities.map((item) => item.id), ["browser"]);
+  assert.equal(plan.trace.rejected.find((item) => item.id === "duplicate-cause")?.reason, "dominated");
 });
 
 test("execution branches preserve rejected work outside the active path", () => {

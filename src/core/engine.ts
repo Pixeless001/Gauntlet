@@ -18,13 +18,13 @@ import { discoverConventions, selectConventionFacts } from "../repo/conventions.
 import { inspectConventionDrift } from "../verify/convention-drift.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
 import { assessRisk } from "./risk.js";
-import { loadSkill, routeSkills, type SkillName } from "./skills.js";
+import { loadSkill, skillCandidates, type SkillName } from "./skills.js";
 import { createRepoIndex, fingerprintFiles } from "../repo/index.js";
 import { normalizeSearch, repeatedSearch } from "../context/governor.js";
 import { LocalExecutionEnvironment } from "../execution/local.js";
 import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/counterfactual.js";
 import { initialUncertainty } from "../control/uncertainty.js";
-import { selectInterventions } from "../control/selector.js";
+import { planActivation } from "../control/selector.js";
 import { observeExecution, recordVerification } from "../execution-state/runtime.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
@@ -52,8 +52,10 @@ export class GauntletEngine {
     const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
     const risk = assessRisk(contract);
-    const activeSkills = routeSkills(contract, "start", risk.level), uncertainty = initialUncertainty(contract, risk.level), rootId = randomUUID();
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget: { ...DEFAULT_INTERVENTION_BUDGET }, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [], interventionsUsed: activeSkills.length, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, exhaustedEscalation: {}, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } } };
+    const uncertainty = initialUncertainty(contract, risk.level), rootId = randomUUID(), budget = { ...DEFAULT_INTERVENTION_BUDGET };
+    const activation = planActivation({ uncertainty, candidates: skillCandidates(contract, "start", risk.level), supplied: [], budget, used: 0, event: 0, trigger: "task_start" });
+    const activeSkills = activation.skills.flatMap((candidate) => candidate.skill ? [candidate.skill] : []);
+    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [activation.trace], interventionsUsed: activeSkills.length, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, exhaustedEscalation: {}, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } } };
     await this.store.saveTask(state);
     return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
@@ -76,8 +78,8 @@ export class GauntletEngine {
         const transition = observeExecution(value, activity);
         if (transition.investigate && value.session.uncertainty) {
           value.session.uncertainty.cause = "open";
-          const candidate = { id: "skill:investigate", skill: "investigate" as const, uncertainty: "cause" as const, level: 3 as const, cost: "low" as const, available: true };
-          const trace = selectInterventions({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: transition.trigger ?? "execution_state" });
+          const candidate = { id: "skill:investigate", kind: "skill" as const, skill: "investigate" as const, uncertainty: "cause" as const, resolves: ["cause" as const], level: 3 as const, cost: "low" as const, authority: "local" as const, source: "skills/investigate/SKILL.md", reason: "Execution progress stalled while cause remains open", available: true };
+          const trace = planActivation({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: transition.trigger ?? "execution_state" }).trace;
           if (trace.selected.includes(candidate.id)) {
             trace.changedState = true;
             value.session.activeSkills = ["investigate"];
