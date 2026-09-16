@@ -28,6 +28,7 @@ import { planActivation } from "../control/selector.js";
 import { observeExecution, recordVerification } from "../execution-state/runtime.js";
 import { buildStructuralIndex, updateStructuralIndex } from "../intelligence/index.js";
 import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.js";
+import { domainCandidates } from "../domains/resolver.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
 import { remainingEvidence, type EvidenceKind } from "../verify/evidence-selector.js";
 
@@ -54,7 +55,7 @@ export class GauntletEngine {
     const ambiguity = detectAmbiguity(contract);
     const risk = assessRisk(contract);
     const uncertainty = initialUncertainty(contract, risk.level), rootId = randomUUID(), budget = { ...DEFAULT_INTERVENTION_BUDGET };
-    const activation = planActivation({ uncertainty, candidates: skillCandidates(contract, "start", risk.level), supplied: [], budget, used: 0, event: 0, trigger: "task_start" });
+    const activation = planActivation({ uncertainty, candidates: [...skillCandidates(contract, "start", risk.level), ...domainCandidates(profile, contract)], supplied: [], budget, used: 0, event: 0, trigger: "task_start" });
     const activeSkills = activation.skills.flatMap((candidate) => candidate.skill ? [candidate.skill] : []);
     const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [activation.trace], interventionsUsed: activeSkills.length, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, exhaustedEscalation: {}, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } } };
     await this.store.saveTask(state);

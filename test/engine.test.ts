@@ -152,3 +152,12 @@ test("documentation completion stays silent instead of expanding the code graph"
     assert.equal(result.selection?.graphExpansions, 0); assert.equal(result.checksRun, 1); assert.equal(result.verified, true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("detected domains stay inactive when no reference provider is available", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-domain-candidate-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { react: "19.0.0" } })); await writeFile(join(cwd, "component.tsx"), "export const Component = () => null;\n");
+    const result = await new GauntletEngine(cwd).start("Improve React render performance in component.tsx", "domain");
+    const trace = result.state.session?.selectionTraces?.[0]; assert.ok(trace?.candidates.includes("reference:react")); assert.equal(trace?.rejected.find((item) => item.id === "reference:react")?.reason, "unavailable");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
