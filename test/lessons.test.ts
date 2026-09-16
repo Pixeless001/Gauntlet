@@ -23,6 +23,7 @@ test("verified lessons enter the bounded task context", async () => {
     await saveLesson(cwd, { scope: ".", fact: "auth errors use AuthError", source: "auth.ts", fingerprint });
     const packet = await createContextPacket(cwd, { intent: "change auth.ts", acceptanceCriteria: [], constraints: [], explicitPaths: ["auth.ts"] });
     assert.match(formatContext(packet), /Verified repository lessons:[\s\S]*AuthError/);
+    assert.ok(packet.evidence?.some((item) => item.id.startsWith("lesson:") && item.claims[0]?.authority === "cached"));
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
