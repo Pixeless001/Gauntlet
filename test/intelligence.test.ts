@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildStructuralIndex, updateStructuralIndex } from "../src/intelligence/index.js";
-import { impact, workingGraph } from "../src/intelligence/working-graph.js";
+import { ensureDepth, impact, workingGraph } from "../src/intelligence/working-graph.js";
 import { selectMarginal } from "../src/context/marginality.js";
 import type { RepoIndex } from "../src/repo/index.js";
 
@@ -15,8 +15,9 @@ test("structural intelligence finds imports, dependents, exports, symbols, and t
     const repository: RepoIndex = { mode: "filesystem", head: null, files: ["owner.ts", "caller.ts", "feature.ts", "owner.test.ts"], tests: ["owner.test.ts"], configs: [], dirty: [], fingerprints: {} };
     const index = await buildStructuralIndex(cwd, repository), cone = impact(index, "owner.ts");
     assert.deepEqual(index.dependents["owner.ts"], ["caller.ts"]); assert.deepEqual(index.files["owner.ts"]?.symbols, ["Contract", "Owner", "owner"]); assert.deepEqual(index.files["owner.ts"]?.extends, ["Base"]); assert.deepEqual(index.files["owner.ts"]?.implements, ["Contract"]); assert.ok(index.files["caller.ts"]?.calls?.includes("owner"));
-    assert.equal(cone.publicSurface, true); assert.deepEqual(cone.transitiveDependents, ["caller.ts", "feature.ts"]); assert.deepEqual(cone.affectedTests, ["owner.test.ts"]); assert.deepEqual(cone.packageCrossings, []);
+    assert.equal(cone.publicSurface, true); assert.equal(cone.confidence, "high"); assert.deepEqual(cone.transitiveDependents, ["caller.ts", "feature.ts"]); assert.deepEqual(cone.affectedTests, ["owner.test.ts"]); assert.deepEqual(cone.packageCrossings, []);
     assert.deepEqual(workingGraph(index, ["owner.ts"]).map((item) => item.path), ["owner.ts", "caller.ts", "owner.test.ts", "feature.ts"]);
+    const expanded = ensureDepth(index, ["owner.ts"], "relation"); assert.ok(expanded.symbols.includes("owner")); assert.ok(expanded.relations.some((edge) => edge.kind === "dependent" && edge.to === "caller.ts"));
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
