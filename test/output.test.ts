@@ -16,7 +16,8 @@ test("conditioning deduplicates noise and preserves actionable failures", () => 
 });
 
 test("conditioning records truncation and estimated context savings", () => {
-  const value = conditionOutput({ ...result, stdout: `${"FAIL repeated diagnostic\n".repeat(100)}unique error\n` }, 64);
+  const diagnostics = Array.from({ length: 100 }, (_, index) => `FAIL diagnostic ${index}`).join("\n");
+  const value = conditionOutput({ ...result, stdout: `${diagnostics}\nunique error\n` }, 64);
   assert.equal(value.truncated, true); assert.ok(value.tokensRemoved > 0); assert.match(value.summary, /summary truncated/);
 });
 
