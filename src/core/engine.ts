@@ -121,7 +121,9 @@ export class GauntletEngine {
       : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : cachedStructural ?? undefined;
     if (structural) await saveStructuralIndex(this.cwd, structural);
     if (structural && state.session) state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1;
-    const plan = selectVerification(await detectRepository(this.cwd), changes, currentIndex?.files, structural), results = await runVerification(this.cwd, plan, undefined, state.id);
+    const plan = selectVerification(await detectRepository(this.cwd), changes, currentIndex?.files, structural, state.session?.uncertainty ? { uncertainty: state.session.uncertainty, budget: state.session.budget, event: state.activities.length } : undefined);
+    if (plan.selectionTrace && state.session) state.session.selectionTraces = [...(state.session.selectionTraces ?? []), plan.selectionTrace].slice(-64);
+    const results = await runVerification(this.cwd, plan, undefined, state.id);
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
     if (risk.level === "elevated" && newTest && testCheck && state.baseline.head && this.options.preChangeEnvironment) {
       const candidateTests = changes.filter((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path)).map((change) => change.path), before = await this.options.preChangeEnvironment(state.baseline.head, candidateTests), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
