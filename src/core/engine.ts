@@ -26,7 +26,8 @@ import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/
 import { initialUncertainty } from "../control/uncertainty.js";
 import { planActivation } from "../control/selector.js";
 import { observeExecution, recordVerification } from "../execution-state/runtime.js";
-import { buildStructuralIndex } from "../intelligence/index.js";
+import { buildStructuralIndex, updateStructuralIndex } from "../intelligence/index.js";
+import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
 import { remainingEvidence, type EvidenceKind } from "../verify/evidence-selector.js";
 
@@ -112,8 +113,12 @@ export class GauntletEngine {
     }
     const codeChanges = changes.filter((item) => /\.[cm]?[jt]sx?$/.test(item.path));
     const currentIndex = codeChanges.length ? await createRepoIndex(this.cwd) : state.baseline.index;
-    const structuralTargets = [...new Set([...codeChanges.map((item) => item.path), ...(currentIndex?.files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 160) ?? [])])];
-    const structural = currentIndex && codeChanges.length ? await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : undefined;
+    const cachedStructural = currentIndex ? await loadStructuralIndex(this.cwd) : null;
+    const structuralTargets = currentIndex?.files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 160) ?? [];
+    const structural = currentIndex && codeChanges.length ? cachedStructural
+      ? await updateStructuralIndex(this.cwd, currentIndex, cachedStructural, codeChanges.map((item) => item.path), 160)
+      : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : cachedStructural ?? undefined;
+    if (structural) await saveStructuralIndex(this.cwd, structural);
     if (structural && state.session) state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1;
     const plan = selectVerification(await detectRepository(this.cwd), changes, currentIndex?.files, structural), results = await runVerification(this.cwd, plan, undefined, state.id);
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
