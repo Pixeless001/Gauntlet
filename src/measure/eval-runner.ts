@@ -5,6 +5,7 @@ import { assessRisk } from "../core/risk.js";
 import { routeSkills } from "../core/skills.js";
 import type { EvalResult } from "./evals.js";
 import { runIntelligenceEvals } from "./scenarios.js";
+import { ARCHITECTURE_FIXTURES } from "./fixtures.js";
 
 const cases = [
   { id: "silence-readme", intent: "Fix README typo", expected: [] },
@@ -14,10 +15,14 @@ const cases = [
 ] as const;
 
 export function runBuiltInEvals(): EvalResult[] {
+  const architecture = ARCHITECTURE_FIXTURES.map((item) => {
+    const started = performance.now(), contract = extractContract(item.intent), actual = routeSkills(contract, "start", assessRisk(contract).level), passed = actual.join() === item.expectedSkills.join();
+    return { category: item.expectedSkills.length ? "routing" as const : "overhead" as const, caseId: `architecture:${item.id}`, passed, durationMs: performance.now() - started, interventions: actual.length, extraModelCalls: 0, contextItems: 0, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, evidence: [`acceptance: ${item.acceptance.join("; ")}`, `preservation: ${item.preservation.join("; ")}`, `expected: ${item.expectedSkills.join() || "none"}`, `actual: ${actual.join() || "none"}`, `sufficient evidence: ${item.sufficientEvidence.join(", ")}`, `stop: ${item.stopCondition}`] };
+  });
   return [...cases.map((item) => {
     const started = performance.now(), contract = extractContract(item.intent), actual = routeSkills(contract, "start", assessRisk(contract).level), passed = actual.join() === item.expected.join();
     return { category: item.id.startsWith("silence") ? "overhead" as const : "routing" as const, caseId: item.id, passed, durationMs: performance.now() - started, interventions: actual.length, extraModelCalls: 0, contextItems: 0, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, evidence: [`expected: ${item.expected.join() || "none"}`, `actual: ${actual.join() || "none"}`] };
-  }), ...runIntelligenceEvals()];
+  }), ...architecture, ...runIntelligenceEvals()];
 }
 
 export async function saveEvalRun(cwd: string, results: EvalResult[]): Promise<string> {
