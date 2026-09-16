@@ -12,6 +12,12 @@ test("conditioning deduplicates noise and preserves actionable failures", () => 
   const value = conditionOutput(result);
   assert.match(value.summary, /FAIL auth\.test\.ts/); assert.match(value.summary, /Expected 2 received 3/);
   assert.ok(value.retainedBytes < value.rawBytes + Buffer.byteLength("npm test: failed (1)"));
+  assert.equal(value.actionableFailures, 2); assert.equal(value.truncated, false); assert.ok(value.tokensRemoved >= 0);
+});
+
+test("conditioning records truncation and estimated context savings", () => {
+  const value = conditionOutput({ ...result, stdout: `${"FAIL repeated diagnostic\n".repeat(100)}unique error\n` }, 64);
+  assert.equal(value.truncated, true); assert.ok(value.tokensRemoved > 0); assert.match(value.summary, /summary truncated/);
 });
 
 test("raw evidence retention remains bounded", async () => {
