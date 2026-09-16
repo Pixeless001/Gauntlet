@@ -91,7 +91,18 @@ export class GauntletEngine {
           }
           value.session.selectionTraces = [...(value.session.selectionTraces ?? []), trace].slice(-64);
         }
-        if (transition.causeValidated && value.session.uncertainty) { value.session.uncertainty.cause = "resolved"; value.session.activeSkills = ["implement"]; workflowChanged = true; }
+        if (transition.causeValidated && value.session.uncertainty) {
+          value.session.uncertainty.cause = "resolved";
+          const candidate = { id: "skill:implement", kind: "skill" as const, skill: "implement" as const, uncertainty: "behavior" as const, resolves: ["behavior" as const, "scope" as const], level: 3 as const, cost: "low" as const, authority: "local" as const, source: "skills/implement/SKILL.md", reason: "Validated cause makes implementation the next useful workflow", available: true };
+          const activation = planActivation({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: [], budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: "cause_validated" });
+          if (activation.skills.length) {
+            activation.trace.changedState = value.session.activeSkills.length !== 1 || value.session.activeSkills[0] !== "implement";
+            value.session.activeSkills = ["implement"];
+            value.session.interventionsUsed = (value.session.interventionsUsed ?? 0) + 1;
+            workflowChanged = true;
+          }
+          value.session.selectionTraces = [...(value.session.selectionTraces ?? []), activation.trace].slice(-64);
+        }
       }
     });
     const decision = shouldCompact(state); let continuation = decision.compact || workflowChanged ? compact(state) : null;

@@ -76,6 +76,7 @@ test("validated cause resumes implementation on the active execution path", asyn
     await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 }); await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 });
     const result = await engine.activity("cause", { kind: "decision_signal", target: "cause: missing request coalescing", outcome: "pass", outputBytes: 0, evidenceRef: "test:race" });
     assert.deepEqual(result.state.session?.activeSkills, ["implement"]); assert.equal(result.state.session?.uncertainty?.cause, "resolved");
+    assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "cause_validated"); assert.deepEqual(result.state.session?.selectionTraces?.at(-1)?.selected, ["skill:implement"]);
     assert.equal(result.continuation?.workflow, "implement"); assert.match(result.continuation?.guidance ?? "", /# IMPLEMENT/);
     assert.equal(result.state.session?.execution?.checkpoints.at(-1)?.kind, "implementation"); assert.equal(result.state.session?.execution?.events.at(-1)?.evidenceRef, "test:race");
     const resumed = await engine.start("ignored", "cause"); assert.match(resumed.injection, /Current: missing request coalescing/); assert.match(resumed.injection, /Evidence: test:race/);
