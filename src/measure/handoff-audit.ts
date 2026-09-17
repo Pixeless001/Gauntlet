@@ -1,6 +1,17 @@
 export type AuditStatus = "implemented" | "partial" | "missing";
 export interface HandoffAuditItem { sections: string; capability: string; status: AuditStatus; evidence: string[]; gap?: string }
-export interface HandoffAuditSummary { implemented: number; partial: number; missing: number; total: number; completion: number; releaseReady: boolean }
+export interface HandoffAuditSummary {
+  implemented: number;
+  partial: number;
+  missing: number;
+  total: number;
+  implementedSections: number;
+  partialSections: number;
+  missingSections: number;
+  totalSections: number;
+  completion: number;
+  releaseReady: boolean;
+}
 
 export const HANDOFF_AUDIT: readonly HandoffAuditItem[] = [
   done("0-4, 122, 132-134", "product boundary and constitutive policy", "src/core/steer.ts", "src/core/policy.ts"),
@@ -26,7 +37,7 @@ export const HANDOFF_AUDIT: readonly HandoffAuditItem[] = [
   done("85-87", "selection trace, ROI, and negative routing", "src/control/selector.ts", "src/measure/evals.ts"),
   partial("88-90", "bounded repository brain storage", "src/state/store.ts", "Task, index, output, cache, lessons, and eval bounds exist but no aggregate repository-state quota exists."),
   partial("91-95", "portable harness lifecycle and dynamic activation", "src/adapters/", "Adapters normalize events, but capability negotiation does not feed the runtime registry."),
-  partial("96-113", "realistic evaluation program", "src/measure/fixtures.ts", "Fixtures mostly evaluate routing metadata rather than running repository-backed baseline-versus-Gauntlet tasks."),
+  partial("96-101, 103-113", "realistic evaluation program", "src/measure/fixtures.ts", "Fixtures mostly evaluate routing metadata rather than running repository-backed baseline-versus-Gauntlet tasks."),
   missing("114", "historical evaluation generation", "No historical commit task generator exists."),
   partial("115", "experience compiler evaluation loop", "src/knowledge/evolution.ts", "Promotion predicates exist without a compiler runner and persisted rollback version."),
   missing("116", "subsystem ablation evaluations", "No evaluation disables each major subsystem and compares outcomes and overhead."),
@@ -41,7 +52,24 @@ export function summarizeHandoffAudit(items: readonly HandoffAuditItem[] = HANDO
   const partial = items.filter((item) => item.status === "partial").length;
   const missing = items.filter((item) => item.status === "missing").length;
   const total = items.length;
-  return { implemented, partial, missing, total, completion: total ? (implemented + partial * 0.5) / total : 0, releaseReady: missing === 0 && partial === 0 };
+  const sections = items.flatMap((item) => expandSections(item.sections).map((section) => ({ section, status: item.status })));
+  const duplicates = sections.filter((item, index) => sections.findIndex((candidate) => candidate.section === item.section) !== index);
+  if (duplicates.length) throw new Error(`Handoff audit overlaps sections: ${[...new Set(duplicates.map((item) => item.section))].join(", ")}`);
+  const implementedSections = sections.filter((item) => item.status === "implemented").length;
+  const partialSections = sections.filter((item) => item.status === "partial").length;
+  const missingSections = sections.filter((item) => item.status === "missing").length;
+  const totalSections = sections.length;
+  return { implemented, partial, missing, total, implementedSections, partialSections, missingSections, totalSections, completion: totalSections ? (implementedSections + partialSections * 0.5) / totalSections : 0, releaseReady: missingSections === 0 && partialSections === 0 };
+}
+
+export function expandSections(value: string): number[] {
+  return value.split(",").flatMap((range) => {
+    const match = range.trim().match(/^(\d+)(?:-(\d+))?$/);
+    if (!match) throw new Error(`Invalid handoff section range: ${range.trim()}`);
+    const start = Number(match[1]), end = Number(match[2] ?? match[1]);
+    if (end < start) throw new Error(`Invalid descending handoff section range: ${range.trim()}`);
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  });
 }
 
 function done(sections: string, capability: string, ...evidence: string[]): HandoffAuditItem { return { sections, capability, status: "implemented", evidence }; }
