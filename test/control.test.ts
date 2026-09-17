@@ -28,6 +28,22 @@ test("activation plan composes complementary candidate kinds", () => {
   assert.equal(plan.trace.rejected.find((item) => item.id === "duplicate-cause")?.reason, "dominated");
 });
 
+test("selector prefers authoritative evidence and enforces subsystem budgets", () => {
+  const uncertainty = initialUncertainty({ intent: "Fix visual auth race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 4, skillInvocations: 1, expensiveChecks: 1 }, used: 0, event: 0, trigger: "adversarial", candidates: [
+    { id: "external-cause", kind: "evidence", uncertainty: "cause", level: 2, cost: "tiny", authority: "external", available: true },
+    { id: "repository-cause", kind: "evidence", uncertainty: "cause", level: 2, cost: "medium", authority: "repository", available: true },
+    { id: "skill:implement", kind: "skill", skill: "implement", uncertainty: "behavior", level: 3, cost: "low", available: true },
+    { id: "skill:review", kind: "skill", skill: "review", uncertainty: "scope", level: 3, cost: "low", available: true },
+    { id: "browser", kind: "capability", uncertainty: "visual", level: 4, cost: "medium", available: true },
+    { id: "delegation", kind: "capability", uncertainty: "regression", level: 5, cost: "high", available: true },
+  ] });
+  assert.ok(plan.trace.selected.includes("repository-cause"));
+  assert.equal(plan.trace.rejected.find((item) => item.id === "external-cause")?.reason, "dominated");
+  assert.equal(plan.skills.length, 1); assert.equal(plan.trace.rejected.find((item) => item.id === "skill:review")?.reason, "budget_exceeded");
+  assert.equal(plan.capabilities.length, 1); assert.equal(plan.trace.rejected.find((item) => item.id === "delegation")?.reason, "budget_exceeded");
+});
+
 test("execution branches preserve rejected work outside the active path", () => {
   const root: ExecutionCheckpoint = { id: "root", kind: "task", status: "validated", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] };
   const first: ExecutionCheckpoint = { ...root, id: "first", parentId: "root", kind: "implementation", status: "active", summary: "first" };

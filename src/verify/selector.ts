@@ -32,6 +32,6 @@ export function verificationCandidates(plan: VerificationPlan): InterventionCand
 
 function selected(plan: VerificationPlan, control?: { uncertainty: UncertaintyState; budget: InterventionBudget; event: number }): VerificationPlan {
   if (!control || !plan.checks.length) return plan;
-  const candidates = verificationCandidates(plan), activation = planActivation({ uncertainty: control.uncertainty, candidates, supplied: [], budget: { ...control.budget, interventions: Math.max(control.budget.interventions, candidates.length) }, used: 0, event: control.event, trigger: "before_stop" }), ids = new Set(activation.evidence.map((item) => item.id.replace(/^evidence:/, "")));
+  const candidates = verificationCandidates(plan), activation = planActivation({ uncertainty: control.uncertainty, candidates, supplied: [], budget: control.budget, used: 0, event: control.event, trigger: "before_stop" }), ids = new Set(activation.evidence.map((item) => item.id.replace(/^evidence:/, "")));
   return { ...plan, checks: plan.checks.filter((check) => ids.has(check.id)), selectionTrace: activation.trace };
 }

@@ -34,7 +34,7 @@ export interface ActivationPlan {
 
 export function selectInterventions(input: { uncertainty: UncertaintyState; candidates: InterventionCandidate[]; supplied: string[]; budget: InterventionBudget; used: number; event: number; trigger: string }): SelectionTrace {
   const selected: string[] = [], rejected: SelectionTrace["rejected"] = [];
-  const ordered = [...input.candidates].sort((a, b) => a.level - b.level || cost(a.cost) - cost(b.cost) || a.id.localeCompare(b.id));
+  const ordered = [...input.candidates].sort((a, b) => a.level - b.level || authority(a.authority) - authority(b.authority) || cost(a.cost) - cost(b.cost) || a.id.localeCompare(b.id));
   for (const candidate of ordered) {
     const resolves = targets(candidate), states = resolves.map((kind) => input.uncertainty[kind]);
     if (states.every((state) => state === "resolved")) { rejected.push({ id: candidate.id, reason: "resolved" }); continue; }
@@ -44,6 +44,9 @@ export function selectInterventions(input: { uncertainty: UncertaintyState; cand
     const covered = new Set(selected.flatMap((id) => targets(ordered.find((item) => item.id === id)!)));
     if (resolves.every((kind) => covered.has(kind) || input.uncertainty[kind] === "resolved" || input.uncertainty[kind] === "irrelevant")) { rejected.push({ id: candidate.id, reason: "dominated" }); continue; }
     if (input.used + selected.length >= input.budget.interventions) { rejected.push({ id: candidate.id, reason: "budget_exceeded" }); continue; }
+    const selectedCandidates = selected.map((id) => ordered.find((item) => item.id === id)!);
+    if (candidateKind(candidate) === "skill" && selectedCandidates.filter((item) => candidateKind(item) === "skill").length >= input.budget.skillInvocations) { rejected.push({ id: candidate.id, reason: "budget_exceeded" }); continue; }
+    if (expensive(candidate) && selectedCandidates.filter(expensive).length >= input.budget.expensiveChecks) { rejected.push({ id: candidate.id, reason: "budget_exceeded" }); continue; }
     selected.push(candidate.id);
   }
   return { event: input.event, trigger: input.trigger, candidates: ordered.map((item) => item.id), selected, activations: selected.map((id) => activation(ordered.find((candidate) => candidate.id === id)!)), rejected };
@@ -56,6 +59,8 @@ export function planActivation(input: Parameters<typeof selectInterventions>[0])
 }
 
 function cost(value: CostClass): number { return { tiny: 0, low: 1, medium: 2, high: 3 }[value]; }
+function authority(value: EvidenceAuthority = "local"): number { return { repository: 0, local: 1, runtime: 2, cached: 3, external: 4 }[value]; }
+function expensive(candidate: InterventionCandidate): boolean { return candidate.level >= 4 || candidate.cost === "high"; }
 function targets(candidate: InterventionCandidate): UncertaintyKind[] { return [...new Set(candidate.resolves?.length ? candidate.resolves : [candidate.uncertainty])]; }
 function candidateKind(candidate: InterventionCandidate): CandidateKind { return candidate.kind ?? (candidate.skill ? "skill" : "evidence"); }
 function activation(candidate: InterventionCandidate): SelectedIntervention {
