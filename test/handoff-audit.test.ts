@@ -7,9 +7,14 @@ test("handoff audit is explicit, evidenced, and refuses a false release-ready ve
   assert.equal(HANDOFF_AUDIT.length, 31);
   assert.equal(summary.totalSections, 136);
   assert.equal(summary.releaseReady, false);
+  assert.equal(summary.verdict, "not-ready");
   assert.ok(summary.missing > 0 && summary.partial > summary.implemented);
   assert.ok(summary.missingSections > summary.missing);
   assert.equal(summary.completion, (summary.implementedSections + summary.partialSections * 0.5) / 136);
+  assert.equal(summary.coverageLowerBound, summary.implementedSections / 136);
+  assert.equal(summary.coverageUpperBound, (summary.implementedSections + summary.partialSections) / 136);
+  assert.ok(summary.coverageLowerBound < summary.completion && summary.completion < summary.coverageUpperBound);
+  assert.deepEqual(summary.nextBlockingSections, ["5-10", "11-13", "26-28", "29-35", "36-39, 41"]);
   assert.ok(HANDOFF_AUDIT.every((item) => item.status === "implemented" ? item.evidence.length > 0 && !item.gap : Boolean(item.gap)));
 });
 

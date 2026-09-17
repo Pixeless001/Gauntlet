@@ -9,7 +9,11 @@ export interface HandoffAuditSummary {
   partialSections: number;
   missingSections: number;
   totalSections: number;
+  coverageLowerBound: number;
+  coverageUpperBound: number;
   completion: number;
+  verdict: "ready" | "not-ready";
+  nextBlockingSections: string[];
   releaseReady: boolean;
 }
 
@@ -59,7 +63,17 @@ export function summarizeHandoffAudit(items: readonly HandoffAuditItem[] = HANDO
   const partialSections = sections.filter((item) => item.status === "partial").length;
   const missingSections = sections.filter((item) => item.status === "missing").length;
   const totalSections = sections.length;
-  return { implemented, partial, missing, total, implementedSections, partialSections, missingSections, totalSections, completion: totalSections ? (implementedSections + partialSections * 0.5) / totalSections : 0, releaseReady: missingSections === 0 && partialSections === 0 };
+  const releaseReady = missingSections === 0 && partialSections === 0;
+  const coverageLowerBound = totalSections ? implementedSections / totalSections : 0;
+  const coverageUpperBound = totalSections ? (implementedSections + partialSections) / totalSections : 0;
+  return {
+    implemented, partial, missing, total, implementedSections, partialSections, missingSections, totalSections,
+    coverageLowerBound, coverageUpperBound,
+    completion: totalSections ? (implementedSections + partialSections * 0.5) / totalSections : 0,
+    verdict: releaseReady ? "ready" : "not-ready",
+    nextBlockingSections: items.filter((item) => item.status !== "implemented").slice(0, 5).map((item) => item.sections),
+    releaseReady,
+  };
 }
 
 export function expandSections(value: string): number[] {
