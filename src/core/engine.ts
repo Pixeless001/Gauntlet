@@ -125,6 +125,7 @@ export class GauntletEngine {
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
     const codeChanges = changes.filter((item) => /\.[cm]?[jt]sx?$/.test(item.path));
+    if (changes.length && state.session?.uncertainty?.location === "partial") state.session.uncertainty.location = "resolved";
     const currentIndex = codeChanges.length ? await createRepoIndex(this.cwd) : state.baseline.index;
     const cachedStructural = currentIndex ? await loadStructuralIndex(this.cwd, currentIndex.head) : null;
     const structuralTargets = [...new Set([...state.contract.explicitPaths, ...codeChanges.map((item) => item.path), ...state.workingSet])].filter((path) => /\.[cm]?[jt]sx?$/.test(path));
