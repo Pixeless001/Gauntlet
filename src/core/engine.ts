@@ -35,7 +35,7 @@ import { remainingEvidence, type EvidenceKind } from "../verify/evidence-selecto
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
-export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null> }
+export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableEvidence?: EvidenceKind[] }
 export class GauntletEngine {
   private readonly store: StateStore;
   constructor(readonly cwd: string, private readonly options: EngineOptions = {}) { this.store = new StateStore(cwd); }
@@ -137,7 +137,8 @@ export class GauntletEngine {
       : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : !codeChanges.length ? cachedStructural ?? undefined : undefined;
     if (structural) await saveStructuralIndex(this.cwd, structural);
     if (expandGraph && structural && state.session) { state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1; state.session.interventionsUsed = (state.session.interventionsUsed ?? 0) + 1; }
-    const plan = selectVerification(await detectRepository(this.cwd), changes, currentIndex?.files, structural, state.session?.uncertainty ? { uncertainty: state.session.uncertainty, budget: state.session.budget, event: state.activities.length } : undefined);
+    const profile = await detectRepository(this.cwd);
+    const plan = selectVerification(profile, changes, currentIndex?.files, structural, state.session?.uncertainty ? { uncertainty: state.session.uncertainty, budget: state.session.budget, event: state.activities.length } : undefined);
     if (plan.selectionTrace && state.session) state.session.selectionTraces = [...(state.session.selectionTraces ?? []), plan.selectionTrace].slice(-64);
     const results = await runVerification(this.cwd, plan, undefined, state.id);
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
@@ -148,7 +149,8 @@ export class GauntletEngine {
     if (state.session?.uncertainty && !state.findings.some((item) => item.code.startsWith("convention-"))) state.session.uncertainty.repoFit = state.session.uncertainty.repoFit === "irrelevant" ? "irrelevant" : "resolved";
     const machinePassed = results.length > 0 && results.every((result) => result.status === "pass") && state.findings.every((finding) => !finding.blocking);
     const supplied: EvidenceKind[] = ["diff", ...(structural ? ["graph" as const] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test" as const] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule" as const])];
-    const outstanding = machinePassed && state.session?.uncertainty ? remainingEvidence(state.session.uncertainty, supplied) : [];
+    const obtainable: EvidenceKind[] = ["diff", "repository_rule", ...(currentIndex ? ["search" as const] : []), ...(structural || currentIndex ? ["graph" as const] : []), ...(plan.checks.some((check) => check.id.includes("test")) ? ["test" as const] : []), ...(this.options.availableEvidence ?? [])];
+    const outstanding = machinePassed && state.session?.uncertainty ? remainingEvidence(state.session.uncertainty, supplied, obtainable) : [];
     for (const item of outstanding) state.findings.push({ code: `unresolved-evidence-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.evidence} evidence before completion.`, evidence: [] });
     const passed = machinePassed && outstanding.length === 0;
     recordVerification(state, passed, results.map((result) => result.evidence).filter((item): item is string => Boolean(item)), supplied);

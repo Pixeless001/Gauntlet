@@ -11,11 +11,12 @@ export function hasSufficientEvidence(kind: UncertaintyKind, supplied: Iterable<
   return evidenceRequirements[kind].some((requirement) => requirement.every((evidence) => available.has(evidence)));
 }
 
-export function remainingEvidence(uncertainty: UncertaintyState, supplied: EvidenceKind[]): { uncertainty: UncertaintyKind; evidence: EvidenceKind }[] {
-  const available = new Set(supplied), result: { uncertainty: UncertaintyKind; evidence: EvidenceKind }[] = [];
+export function remainingEvidence(uncertainty: UncertaintyState, supplied: EvidenceKind[], obtainable?: EvidenceKind[]): { uncertainty: UncertaintyKind; evidence: EvidenceKind }[] {
+  const available = new Set(supplied), paths = obtainable ? new Set([...supplied, ...obtainable]) : null, result: { uncertainty: UncertaintyKind; evidence: EvidenceKind }[] = [];
   for (const [kind, state] of Object.entries(uncertainty) as [UncertaintyKind, UncertaintyState[UncertaintyKind]][]) {
     if (state !== "open" && state !== "partial") continue;
     if (hasSufficientEvidence(kind, available)) continue;
+    if (paths && !evidenceRequirements[kind].some((requirement) => requirement.every((evidence) => paths.has(evidence)))) continue;
     const closest = evidenceRequirements[kind].map((requirement) => requirement.filter((evidence) => !available.has(evidence))).sort((a, b) => a.length - b.length)[0]!;
     result.push({ uncertainty: kind, evidence: closest[0]! });
   }
