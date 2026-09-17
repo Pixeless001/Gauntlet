@@ -32,6 +32,20 @@ test("structural intelligence incrementally replaces changed files and removes d
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("targeted structural intelligence expands dependencies without indexing unrelated files", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-index-targeted-"));
+  try {
+    await writeFile(join(cwd, "owner.ts"), "import { dependency } from './dependency.js';\nexport const owner = dependency;\n");
+    await writeFile(join(cwd, "dependency.ts"), "export const dependency = 1;\n");
+    await writeFile(join(cwd, "owner.test.ts"), "test('owner', () => {});\n");
+    await writeFile(join(cwd, "unrelated.ts"), "export const unrelated = true;\n");
+    const repository: RepoIndex = { mode: "filesystem", head: null, files: ["owner.ts", "dependency.ts", "owner.test.ts", "unrelated.ts"], tests: ["owner.test.ts"], configs: [], dirty: [], fingerprints: {} };
+    const index = await buildStructuralIndex(cwd, repository, ["owner.ts"]);
+    assert.deepEqual(Object.keys(index.files), ["owner.ts", "dependency.ts", "owner.test.ts"]);
+    assert.equal(index.files["unrelated.ts"], undefined);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("marginal selection rejects relevant but redundant context", () => {
   assert.deepEqual(selectMarginal([{ value: "owner", contributions: ["owner"], cost: 1 }, { value: "same", contributions: ["owner"], cost: 1 }, { value: "test", contributions: ["acceptance"], cost: 1 }], 2), { selected: ["owner", "test"], rejected: ["same"] });
 });

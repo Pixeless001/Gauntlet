@@ -19,7 +19,7 @@ export async function selectContext(cwd: string, contract: TaskContract, limit =
   const files = index?.files ?? await walk(cwd);
   const explicit = contract.explicitPaths.filter((path) => files.includes(path));
   const relationships = await findRelationships(cwd, explicit, files), related = new Map(relationships.map((item) => [item.path, item]));
-  const structural = index && explicit.length ? await buildStructuralIndex(cwd, index, [...explicit, ...files.filter((path) => /\.[cm]?[jt]sx?$/.test(path)).slice(0, 80)], 80) : null;
+  const structural = index && explicit.length ? await buildStructuralIndex(cwd, index, [...explicit, ...relationships.map((item) => item.path)], 80) : null;
   const graph = structural ? new Map(workingGraph(structural, explicit).map((item) => [item.path, item])) : new Map<string, { path: string; reason: string; depth: number }>();
   const terms = contract.intent.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g)?.filter((term) => !["the", "and", "with", "from", "this", "that", "add", "fix"].includes(term)) ?? [];
   const scored = files.map((path): ContextEntry => {

@@ -11,7 +11,9 @@ export interface StructuralIndex { version: 1; head: string | null; files: Recor
 
 export async function buildStructuralIndex(cwd: string, repository: RepoIndex, targets: string[] = repository.files, maxFiles = 200, maxBytes = 512_000): Promise<StructuralIndex> {
   const known = new Set(repository.files), files: Record<string, StructuralFile> = {}, dependents: Record<string, string[]> = {}; let bytes = 0;
-  for (const path of [...new Set(targets)].filter((item) => known.has(item)).slice(0, maxFiles)) {
+  const queue = [...new Set(targets)].filter((item) => known.has(item));
+  for (let cursor = 0; cursor < queue.length && Object.keys(files).length < maxFiles; cursor++) {
+    const path = queue[cursor]!;
     let source: string; try { const size = (await stat(join(cwd, path))).size; if (size > 128_000 || bytes + size > maxBytes) continue; source = await readFile(join(cwd, path), "utf8"); bytes += size; } catch { continue; }
     const imports = [...source.matchAll(/(?:from\s+|import\s*\(|require\s*\()\s*["']([^"']+)["']/g)].map((match) => resolveImport(path, match[1]!, known)).filter((item): item is string => Boolean(item));
     const exports = [...source.matchAll(/\bexport\s+(?:default\s+)?(?:async\s+)?(?:class|function|interface|type|const|let|var)?\s*([A-Za-z_$][\w$]*)?/g)].map((match) => match[1] ?? "default");
@@ -23,6 +25,7 @@ export async function buildStructuralIndex(cwd: string, repository: RepoIndex, t
     const references = [...source.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map((match) => match[0]).filter((name) => !symbols.includes(name));
     files[path] = { path, hash: createHash("sha256").update(source).digest("hex"), packageRoot: packageRoot(path, known), imports: [...new Set(imports)], exports: [...new Set(exports)], symbols: [...new Set(symbols)], tests: [], calls: [...new Set(calls)], references: [...new Set(references)].slice(0, 256), extends: [...new Set(extended)], implements: [...new Set(implemented)] };
     for (const imported of imports) dependents[imported] = [...new Set([...(dependents[imported] ?? []), path])];
+    for (const related of [...imports, ...repository.tests.filter((test) => relatedTest(test, path))]) if (!queue.includes(related)) queue.push(related);
   }
   for (const test of repository.tests) for (const target of Object.keys(files)) if (relatedTest(test, target)) files[target]!.tests.push(test);
   return { version: 1, head: repository.head, files, dependents };
