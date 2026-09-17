@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 export type AuditStatus = "implemented" | "partial" | "missing";
@@ -24,12 +24,13 @@ export const HANDOFF_AUDIT: readonly HandoffAuditItem[] = [
   partial("0-4, 122, 132-134", "product boundary and constitutive policy", "src/core/steer.ts", "Core policy exists, but the reference-name firewall and product-boundary constraints have no automated enforcement."),
   partial("5-10", "one deterministic activation authority", "src/control/selector.ts", "Runtime still constructs separate task-start, activity, graph, and verification plans."),
   partial("11-13", "progressive evidence views and high-level operations", "src/context/evidence-views.ts", "Evidence views are fused for context but are not the common retrieval interface for every provider."),
-  done("14-18", "bounded workflow skills and task contract", "src/core/skills.ts", "skills/understand/SKILL.md"),
-  done("19-25", "execution tree, state reporting, and failed-branch quarantine", "src/execution-state/runtime.ts", "src/execution-state/reconstruct.ts"),
+  partial("14-18", "bounded workflow skills and task contract", "src/core/skills.ts", "Skill files and task contracts exist, but VERIFY, REVIEW, and OPTIMIZE are not dynamically transitioned by execution evidence and preservation requirements are not first-class contract fields."),
+  partial("19-25", "execution tree, state reporting, and failed-branch quarantine", "src/execution-state/runtime.ts", "Active-path reconstruction and branch quarantine exist, but adapters do not demonstrate all meaningful checkpoint boundaries in real host sessions."),
   partial("26-28", "progress deltas and execution-aware compaction", "src/execution-state/progress.ts", "StableTaskState and LiveProgressState are not persisted as separate schemas."),
   partial("29-35", "offline experience compiler and knowledge layers", "src/knowledge/evolution.ts", "Pattern proposal and promotion primitives exist, but no offline compiler run orchestrates evaluation and rollback."),
   partial("36-39, 41", "marginal context and addressable knowledge", "src/context/marginality.ts", "Context fusion is claim-aware, but detailed evidence retrieval by handle is not exposed end to end."),
-  done("40, 102", "output conditioning and telemetry", "src/output/conditioner.ts", "src/core/measure.ts"),
+  partial("40", "output conditioning", "src/output/conditioner.ts", "Conditioning is wired for verification commands, not all verbose command, build, browser, and search output entering context."),
+  done("102", "output-conditioning metrics", "src/output/conditioner.ts#tokensRemoved", "src/core/measure.ts#actionableFailures"),
   partial("42-50", "persistent progressive code intelligence", "src/intelligence/index.ts", "Index updates occur at before-stop rather than incrementally at file-write boundaries."),
   partial("51-52", "impact-triggered planning and verification", "src/intelligence/working-graph.ts", "Impact does not drive an explicit planning-depth decision."),
   partial("53-56", "capability discovery, repository profile, rules, and baselines", "src/repo/conventions.ts", "Repository facts and rules are narrow and do not cover all specified boundaries and task-relevant baselines."),
@@ -41,7 +42,7 @@ export const HANDOFF_AUDIT: readonly HandoffAuditItem[] = [
   partial("74-76", "bounded event-driven delegation", "src/execution-state/delegation.ts", "Handoff and result validation exist, but no selected delegation provider is dispatched by the runtime."),
   partial("77-82", "risk-aware evidence and before-stop gate", "src/verify/selector.ts", "Verification is candidate-selected, but browser, runtime, security, and external evidence providers are not executable paths."),
   partial("83-84", "proactivity and human interruption policy", "src/core/intent.ts", "Ambiguity uses regex rules without measured expected-value or reversibility inputs."),
-  done("85-87", "selection trace, ROI, and negative routing", "src/control/selector.ts", "src/measure/evals.ts"),
+  partial("85-87", "selection trace, ROI, and negative routing", "src/control/selector.ts", "Trace and ROI types exist, but actionable evidence and state change are not recorded per activation and negative-routing examples are not comprehensive across every optional subsystem."),
   partial("88-90", "bounded repository brain storage", "src/state/store.ts", "Task, index, output, cache, lessons, and eval bounds exist but no aggregate repository-state quota exists."),
   partial("91-95", "portable harness lifecycle and dynamic activation", "src/adapters/types.ts", "Adapters normalize events, but capability negotiation does not feed the runtime registry."),
   partial("96-101, 103-113", "realistic evaluation program", "src/measure/fixtures.ts", "Fixtures mostly evaluate routing metadata rather than running repository-backed baseline-versus-Gauntlet tasks."),
@@ -89,12 +90,15 @@ export function expandSections(value: string): number[] {
   });
 }
 
-export async function validateAuditEvidence(cwd: string, items: readonly HandoffAuditItem[] = HANDOFF_AUDIT): Promise<{ sections: string; evidence: string; reason: "unsafe" | "missing" }[]> {
-  const root = resolve(cwd), issues: { sections: string; evidence: string; reason: "unsafe" | "missing" }[] = [];
+export async function validateAuditEvidence(cwd: string, items: readonly HandoffAuditItem[] = HANDOFF_AUDIT): Promise<{ sections: string; evidence: string; reason: "unsafe" | "missing" | "unverified" }[]> {
+  const root = resolve(cwd), issues: { sections: string; evidence: string; reason: "unsafe" | "missing" | "unverified" }[] = [];
   for (const item of items) for (const evidence of item.evidence) {
-    const path = resolve(root, evidence), fromRoot = relative(root, path);
-    if (isAbsolute(evidence) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) { issues.push({ sections: item.sections, evidence, reason: "unsafe" }); continue; }
-    try { if (!(await stat(path)).isFile()) issues.push({ sections: item.sections, evidence, reason: "missing" }); } catch { issues.push({ sections: item.sections, evidence, reason: "missing" }); }
+    const [locator, anchor] = evidence.split("#", 2), path = resolve(root, locator!), fromRoot = relative(root, path);
+    if (isAbsolute(locator!) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) { issues.push({ sections: item.sections, evidence, reason: "unsafe" }); continue; }
+    try {
+      if (!(await stat(path)).isFile()) { issues.push({ sections: item.sections, evidence, reason: "missing" }); continue; }
+      if (anchor && !(await readFile(path, "utf8")).includes(anchor)) issues.push({ sections: item.sections, evidence, reason: "unverified" });
+    } catch { issues.push({ sections: item.sections, evidence, reason: "missing" }); }
   }
   return issues;
 }
