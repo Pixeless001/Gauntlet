@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
 export type AuditStatus = "implemented" | "partial" | "missing";
@@ -91,11 +91,13 @@ export function expandSections(value: string): number[] {
 }
 
 export async function validateAuditEvidence(cwd: string, items: readonly HandoffAuditItem[] = HANDOFF_AUDIT): Promise<{ sections: string; evidence: string; reason: "unsafe" | "missing" | "unverified" }[]> {
-  const root = resolve(cwd), issues: { sections: string; evidence: string; reason: "unsafe" | "missing" | "unverified" }[] = [];
+  const root = resolve(cwd), canonicalRoot = await realpath(root), issues: { sections: string; evidence: string; reason: "unsafe" | "missing" | "unverified" }[] = [];
   for (const item of items) for (const evidence of item.evidence) {
     const [locator, anchor] = evidence.split("#", 2), path = resolve(root, locator!), fromRoot = relative(root, path);
     if (isAbsolute(locator!) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) { issues.push({ sections: item.sections, evidence, reason: "unsafe" }); continue; }
     try {
+      const canonicalPath = await realpath(path), canonicalRelative = relative(canonicalRoot, canonicalPath);
+      if (canonicalRelative === ".." || canonicalRelative.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) { issues.push({ sections: item.sections, evidence, reason: "unsafe" }); continue; }
       if (!(await stat(path)).isFile()) { issues.push({ sections: item.sections, evidence, reason: "missing" }); continue; }
       if (anchor && !(await readFile(path, "utf8")).includes(anchor)) issues.push({ sections: item.sections, evidence, reason: "unverified" });
     } catch { issues.push({ sections: item.sections, evidence, reason: "missing" }); }

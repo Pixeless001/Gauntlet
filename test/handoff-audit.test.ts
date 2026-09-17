@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expandSections, HANDOFF_AUDIT, summarizeHandoffAudit, validateAuditEvidence } from "../src/measure/handoff-audit.js";
@@ -43,9 +43,11 @@ test("section range parsing rejects malformed overlapping audit input", () => {
 
 test("audit evidence rejects missing and escaping paths", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-audit-"));
+  const outside = await mkdtemp(join(tmpdir(), "gauntlet-audit-outside-"));
   try {
     await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src", "present.ts"), "export {};\n");
-    const items = [{ sections: "1", capability: "present", status: "implemented" as const, evidence: ["src/present.ts#export"] }, { sections: "2", capability: "missing", status: "implemented" as const, evidence: ["src/missing.ts"] }, { sections: "3", capability: "unsafe", status: "implemented" as const, evidence: ["../outside"] }, { sections: "4", capability: "directory", status: "implemented" as const, evidence: ["src"] }, { sections: "5", capability: "unverified", status: "implemented" as const, evidence: ["src/present.ts#missingSymbol"] }];
-    assert.deepEqual(await validateAuditEvidence(cwd, items), [{ sections: "2", evidence: "src/missing.ts", reason: "missing" }, { sections: "3", evidence: "../outside", reason: "unsafe" }, { sections: "4", evidence: "src", reason: "missing" }, { sections: "5", evidence: "src/present.ts#missingSymbol", reason: "unverified" }]);
-  } finally { await rm(cwd, { recursive: true, force: true }); }
+    await writeFile(join(outside, "escaped.ts"), "export const escaped = true;\n"); await symlink(join(outside, "escaped.ts"), join(cwd, "src", "linked.ts"));
+    const items = [{ sections: "1", capability: "present", status: "implemented" as const, evidence: ["src/present.ts#export"] }, { sections: "2", capability: "missing", status: "implemented" as const, evidence: ["src/missing.ts"] }, { sections: "3", capability: "unsafe", status: "implemented" as const, evidence: ["../outside"] }, { sections: "4", capability: "directory", status: "implemented" as const, evidence: ["src"] }, { sections: "5", capability: "unverified", status: "implemented" as const, evidence: ["src/present.ts#missingSymbol"] }, { sections: "6", capability: "symlink", status: "implemented" as const, evidence: ["src/linked.ts#escaped"] }];
+    assert.deepEqual(await validateAuditEvidence(cwd, items), [{ sections: "2", evidence: "src/missing.ts", reason: "missing" }, { sections: "3", evidence: "../outside", reason: "unsafe" }, { sections: "4", evidence: "src", reason: "missing" }, { sections: "5", evidence: "src/present.ts#missingSymbol", reason: "unverified" }, { sections: "6", evidence: "src/linked.ts#escaped", reason: "unsafe" }]);
+  } finally { await rm(cwd, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
