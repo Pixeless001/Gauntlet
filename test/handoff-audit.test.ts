@@ -17,3 +17,12 @@ test("audit identifies dead-end optional capabilities and missing evaluation gat
     assert.equal(HANDOFF_AUDIT.find((item) => item.sections === sections)?.status, "partial");
   }
 });
+
+test("audit covers every numbered handoff section exactly through the final sequence", () => {
+  const covered = new Set<number>();
+  for (const item of HANDOFF_AUDIT) for (const range of item.sections.split(",")) {
+    const bounds = range.trim().split("-").map(Number), start = bounds[0]!, end = bounds[1] ?? start;
+    for (let section = start; section <= end; section++) covered.add(section);
+  }
+  assert.deepEqual([...covered].sort((a, b) => a - b), Array.from({ length: 136 }, (_, section) => section));
+});
