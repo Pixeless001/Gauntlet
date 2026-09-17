@@ -27,3 +27,14 @@ test("structural index storage rejects oversized state", async () => {
     assert.equal(await loadStructuralIndex(cwd), null);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("structural index storage rejects state copied from another repository", async () => {
+  const source = await mkdtemp(join(tmpdir(), "gauntlet-index-source-")), target = await mkdtemp(join(tmpdir(), "gauntlet-index-target-"));
+  try {
+    const value: StructuralIndex = { version: 1, head: "abc", files: {}, dependents: {} };
+    await saveStructuralIndex(source, value);
+    await mkdir(join(target, ".gauntlet", "index"), { recursive: true });
+    await writeFile(join(target, ".gauntlet", "index", "structural-v1.json"), await readFile(join(source, ".gauntlet", "index", "structural-v1.json")));
+    assert.equal(await loadStructuralIndex(target), null);
+  } finally { await rm(source, { recursive: true, force: true }); await rm(target, { recursive: true, force: true }); }
+});
