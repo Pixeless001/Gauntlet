@@ -12,12 +12,13 @@ test("handoff audit is explicit, evidenced, and refuses a false release-ready ve
   assert.equal(summary.releaseReady, false);
   assert.equal(summary.verdict, "not-ready");
   assert.ok(summary.missing > 0 && summary.partial > summary.implemented);
+  assert.equal(summary.implemented, 4);
   assert.ok(summary.missingSections > summary.missing);
   assert.equal(summary.completion, (summary.implementedSections + summary.partialSections * 0.5) / 136);
   assert.equal(summary.coverageLowerBound, summary.implementedSections / 136);
   assert.equal(summary.coverageUpperBound, (summary.implementedSections + summary.partialSections) / 136);
   assert.ok(summary.coverageLowerBound < summary.completion && summary.completion < summary.coverageUpperBound);
-  assert.deepEqual(summary.nextBlockingSections, ["5-10", "11-13", "26-28", "29-35", "36-39, 41"]);
+  assert.deepEqual(summary.nextBlockingSections, ["0-4, 122, 132-134", "5-10", "11-13", "26-28", "29-35"]);
   assert.ok(HANDOFF_AUDIT.every((item) => item.status === "implemented" ? item.evidence.length > 0 && !item.gap : Boolean(item.gap)));
 });
 
@@ -44,7 +45,7 @@ test("audit evidence rejects missing and escaping paths", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-audit-"));
   try {
     await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src", "present.ts"), "export {};\n");
-    const items = [{ sections: "1", capability: "present", status: "implemented" as const, evidence: ["src/present.ts"] }, { sections: "2", capability: "missing", status: "implemented" as const, evidence: ["src/missing.ts"] }, { sections: "3", capability: "unsafe", status: "implemented" as const, evidence: ["../outside"] }];
-    assert.deepEqual(await validateAuditEvidence(cwd, items), [{ sections: "2", evidence: "src/missing.ts", reason: "missing" }, { sections: "3", evidence: "../outside", reason: "unsafe" }]);
+    const items = [{ sections: "1", capability: "present", status: "implemented" as const, evidence: ["src/present.ts"] }, { sections: "2", capability: "missing", status: "implemented" as const, evidence: ["src/missing.ts"] }, { sections: "3", capability: "unsafe", status: "implemented" as const, evidence: ["../outside"] }, { sections: "4", capability: "directory", status: "implemented" as const, evidence: ["src"] }];
+    assert.deepEqual(await validateAuditEvidence(cwd, items), [{ sections: "2", evidence: "src/missing.ts", reason: "missing" }, { sections: "3", evidence: "../outside", reason: "unsafe" }, { sections: "4", evidence: "src", reason: "missing" }]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

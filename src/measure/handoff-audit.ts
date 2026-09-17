@@ -21,10 +21,10 @@ export interface HandoffAuditSummary {
 }
 
 export const HANDOFF_AUDIT: readonly HandoffAuditItem[] = [
-  done("0-4, 122, 132-134", "product boundary and constitutive policy", "src/core/steer.ts", "src/core/policy.ts"),
+  partial("0-4, 122, 132-134", "product boundary and constitutive policy", "src/core/steer.ts", "Core policy exists, but the reference-name firewall and product-boundary constraints have no automated enforcement."),
   partial("5-10", "one deterministic activation authority", "src/control/selector.ts", "Runtime still constructs separate task-start, activity, graph, and verification plans."),
   partial("11-13", "progressive evidence views and high-level operations", "src/context/evidence-views.ts", "Evidence views are fused for context but are not the common retrieval interface for every provider."),
-  done("14-18", "bounded workflow skills and task contract", "src/core/skills.ts", "skills/"),
+  done("14-18", "bounded workflow skills and task contract", "src/core/skills.ts", "skills/understand/SKILL.md"),
   done("19-25", "execution tree, state reporting, and failed-branch quarantine", "src/execution-state/runtime.ts", "src/execution-state/reconstruct.ts"),
   partial("26-28", "progress deltas and execution-aware compaction", "src/execution-state/progress.ts", "StableTaskState and LiveProgressState are not persisted as separate schemas."),
   partial("29-35", "offline experience compiler and knowledge layers", "src/knowledge/evolution.ts", "Pattern proposal and promotion primitives exist, but no offline compiler run orchestrates evaluation and rollback."),
@@ -43,14 +43,14 @@ export const HANDOFF_AUDIT: readonly HandoffAuditItem[] = [
   partial("83-84", "proactivity and human interruption policy", "src/core/intent.ts", "Ambiguity uses regex rules without measured expected-value or reversibility inputs."),
   done("85-87", "selection trace, ROI, and negative routing", "src/control/selector.ts", "src/measure/evals.ts"),
   partial("88-90", "bounded repository brain storage", "src/state/store.ts", "Task, index, output, cache, lessons, and eval bounds exist but no aggregate repository-state quota exists."),
-  partial("91-95", "portable harness lifecycle and dynamic activation", "src/adapters/", "Adapters normalize events, but capability negotiation does not feed the runtime registry."),
+  partial("91-95", "portable harness lifecycle and dynamic activation", "src/adapters/types.ts", "Adapters normalize events, but capability negotiation does not feed the runtime registry."),
   partial("96-101, 103-113", "realistic evaluation program", "src/measure/fixtures.ts", "Fixtures mostly evaluate routing metadata rather than running repository-backed baseline-versus-Gauntlet tasks."),
   missing("114", "historical evaluation generation", "No historical commit task generator exists."),
   partial("115", "experience compiler evaluation loop", "src/knowledge/evolution.ts", "Promotion predicates exist without a compiler runner and persisted rollback version."),
   missing("116", "subsystem ablation evaluations", "No evaluation disables each major subsystem and compares outcomes and overhead."),
   missing("117", "feature interaction evaluations", "No executable pairwise interaction suite exists."),
   partial("118", "feature permanence decisions", "src/knowledge/evolution.ts", "Promotion is gated, but existing subsystem removal decisions are not evaluated."),
-  done("119-121, 126", "research firewall and prohibited architecture", "src/", "package.json"),
+  partial("119-121, 126", "research provenance, firewall, and prohibited architecture", "src/core/policy.ts", "Prohibited defaults are absent, but there is no provenance map or automated reference-name firewall."),
   partial("123-125, 127-131, 135", "strict delivery sequence, budgets, runtime, and metrics", "src/core/policy.ts", "Core phases exist, but conditional experience and optional-provider phases were scaffolded before prerequisite end-to-end gates passed."),
 ];
 
@@ -94,7 +94,7 @@ export async function validateAuditEvidence(cwd: string, items: readonly Handoff
   for (const item of items) for (const evidence of item.evidence) {
     const path = resolve(root, evidence), fromRoot = relative(root, path);
     if (isAbsolute(evidence) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) { issues.push({ sections: item.sections, evidence, reason: "unsafe" }); continue; }
-    try { await stat(path); } catch { issues.push({ sections: item.sections, evidence, reason: "missing" }); }
+    try { if (!(await stat(path)).isFile()) issues.push({ sections: item.sections, evidence, reason: "missing" }); } catch { issues.push({ sections: item.sections, evidence, reason: "missing" }); }
   }
   return issues;
 }
