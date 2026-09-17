@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { expandSections, HANDOFF_AUDIT, summarizeHandoffAudit } from "../src/measure/handoff-audit.js";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expandSections, HANDOFF_AUDIT, summarizeHandoffAudit, validateAuditEvidence } from "../src/measure/handoff-audit.js";
 
 test("handoff audit is explicit, evidenced, and refuses a false release-ready verdict", () => {
   const summary = summarizeHandoffAudit();
@@ -35,4 +38,13 @@ test("section range parsing rejects malformed overlapping audit input", () => {
   assert.deepEqual(expandSections("0-2, 5, 7-8"), [0, 1, 2, 5, 7, 8]);
   assert.throws(() => expandSections("4-2"), /descending/);
   assert.throws(() => summarizeHandoffAudit([HANDOFF_AUDIT[0]!, HANDOFF_AUDIT[0]!]), /overlaps/);
+});
+
+test("audit evidence rejects missing and escaping paths", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-audit-"));
+  try {
+    await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src", "present.ts"), "export {};\n");
+    const items = [{ sections: "1", capability: "present", status: "implemented" as const, evidence: ["src/present.ts"] }, { sections: "2", capability: "missing", status: "implemented" as const, evidence: ["src/missing.ts"] }, { sections: "3", capability: "unsafe", status: "implemented" as const, evidence: ["../outside"] }];
+    assert.deepEqual(await validateAuditEvidence(cwd, items), [{ sections: "2", evidence: "src/missing.ts", reason: "missing" }, { sections: "3", evidence: "../outside", reason: "unsafe" }]);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });

@@ -1,3 +1,6 @@
+import { stat } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
+
 export type AuditStatus = "implemented" | "partial" | "missing";
 export interface HandoffAuditItem { sections: string; capability: string; status: AuditStatus; evidence: string[]; gap?: string }
 export interface HandoffAuditSummary {
@@ -84,6 +87,16 @@ export function expandSections(value: string): number[] {
     if (end < start) throw new Error(`Invalid descending handoff section range: ${range.trim()}`);
     return Array.from({ length: end - start + 1 }, (_, index) => start + index);
   });
+}
+
+export async function validateAuditEvidence(cwd: string, items: readonly HandoffAuditItem[] = HANDOFF_AUDIT): Promise<{ sections: string; evidence: string; reason: "unsafe" | "missing" }[]> {
+  const root = resolve(cwd), issues: { sections: string; evidence: string; reason: "unsafe" | "missing" }[] = [];
+  for (const item of items) for (const evidence of item.evidence) {
+    const path = resolve(root, evidence), fromRoot = relative(root, path);
+    if (isAbsolute(evidence) || fromRoot === ".." || fromRoot.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) { issues.push({ sections: item.sections, evidence, reason: "unsafe" }); continue; }
+    try { await stat(path); } catch { issues.push({ sections: item.sections, evidence, reason: "missing" }); }
+  }
+  return issues;
 }
 
 function done(sections: string, capability: string, ...evidence: string[]): HandoffAuditItem { return { sections, capability, status: "implemented", evidence }; }
