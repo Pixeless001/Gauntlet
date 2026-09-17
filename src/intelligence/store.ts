@@ -13,7 +13,7 @@ export async function loadStructuralIndex(cwd: string, expectedHead?: string | n
     const value = JSON.parse(content) as Partial<StructuralIndex> & { repository?: string };
     if (value.repository !== repositoryId(cwd) || value.version !== 1 || expectedHead !== undefined && value.head !== expectedHead || !value.files || typeof value.files !== "object" || !value.dependents || typeof value.dependents !== "object") return null;
     const { repository: _repository, ...index } = value;
-    return index as StructuralIndex;
+    return await validFingerprints(cwd, index as StructuralIndex) ? index as StructuralIndex : null;
   } catch { return null; }
 }
 
@@ -27,3 +27,13 @@ export async function saveStructuralIndex(cwd: string, index: StructuralIndex): 
 
 function indexPath(cwd: string): string { return join(cwd, ".gauntlet", "index", "structural-v1.json"); }
 function repositoryId(cwd: string): string { return createHash("sha256").update(resolve(cwd)).digest("hex"); }
+async function validFingerprints(cwd: string, index: StructuralIndex): Promise<boolean> {
+  const root = resolve(cwd);
+  for (const file of Object.values(index.files)) {
+    const path = resolve(root, file.path);
+    if (path === root || !path.startsWith(`${root}${process.platform === "win32" ? "\\" : "/"}`) || !file.hash) return false;
+    try { if (createHash("sha256").update(await readFile(path)).digest("hex") !== file.hash) return false; }
+    catch { return false; }
+  }
+  return true;
+}
