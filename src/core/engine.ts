@@ -126,7 +126,7 @@ export class GauntletEngine {
     }
     const codeChanges = changes.filter((item) => /\.[cm]?[jt]sx?$/.test(item.path));
     const currentIndex = codeChanges.length ? await createRepoIndex(this.cwd) : state.baseline.index;
-    const cachedStructural = currentIndex ? await loadStructuralIndex(this.cwd) : null;
+    const cachedStructural = currentIndex ? await loadStructuralIndex(this.cwd, currentIndex.head) : null;
     const structuralTargets = [...new Set([...state.contract.explicitPaths, ...codeChanges.map((item) => item.path), ...state.workingSet])].filter((path) => /\.[cm]?[jt]sx?$/.test(path));
     const graphCandidate = state.session?.uncertainty && codeChanges.length ? graphExpansionCandidate(state.session.uncertainty, Boolean(currentIndex)) : null;
     const graphActivation = graphCandidate && state.session ? planActivation({ uncertainty: state.session.uncertainty!, candidates: [graphCandidate], supplied: [], budget: state.session.budget, used: state.session.interventionsUsed ?? 0, event: state.activities.length, trigger: "before_stop_impact" }) : null;

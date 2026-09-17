@@ -12,6 +12,8 @@ test("structural index storage is local atomic and recoverable", async () => {
     const value: StructuralIndex = { version: 1, head: "abc", files: {}, dependents: {} };
     assert.equal(await saveStructuralIndex(cwd, value), true);
     assert.deepEqual(await loadStructuralIndex(cwd), value);
+    assert.equal(await loadStructuralIndex(cwd, "different-head"), null);
+    assert.deepEqual(await loadStructuralIndex(cwd, "abc"), value);
     const path = join(cwd, ".gauntlet", "index", "structural-v1.json");
     assert.equal(JSON.parse(await readFile(path, "utf8")).head, "abc");
     await writeFile(path, "not json");

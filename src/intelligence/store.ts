@@ -5,13 +5,13 @@ import type { StructuralIndex } from "./index.js";
 
 const MAX_INDEX_BYTES = 1_048_576;
 
-export async function loadStructuralIndex(cwd: string): Promise<StructuralIndex | null> {
+export async function loadStructuralIndex(cwd: string, expectedHead?: string | null): Promise<StructuralIndex | null> {
   const path = indexPath(cwd);
   try {
     const content = await readFile(path, "utf8");
     if (Buffer.byteLength(content) > MAX_INDEX_BYTES) return null;
     const value = JSON.parse(content) as Partial<StructuralIndex> & { repository?: string };
-    if (value.repository !== repositoryId(cwd) || value.version !== 1 || !value.files || typeof value.files !== "object" || !value.dependents || typeof value.dependents !== "object") return null;
+    if (value.repository !== repositoryId(cwd) || value.version !== 1 || expectedHead !== undefined && value.head !== expectedHead || !value.files || typeof value.files !== "object" || !value.dependents || typeof value.dependents !== "object") return null;
     const { repository: _repository, ...index } = value;
     return index as StructuralIndex;
   } catch { return null; }
