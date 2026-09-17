@@ -28,6 +28,17 @@ test("activation plan composes complementary candidate kinds", () => {
   assert.equal(plan.trace.rejected.find((item) => item.id === "duplicate-cause")?.reason, "dominated");
 });
 
+test("selector retains complementary claims for the same uncertainty", () => {
+  const uncertainty = initialUncertainty({ intent: "Fix a request race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 3 }, used: 0, event: 0, trigger: "complementary-evidence", candidates: [
+    { id: "active-path", kind: "context", uncertainty: "cause", level: 1, cost: "tiny", authority: "runtime", contributions: ["cause:validated-path"], available: true },
+    { id: "failing-test", kind: "evidence", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", contributions: ["cause:failure-boundary"], available: true },
+    { id: "duplicate-test-output", kind: "evidence", uncertainty: "cause", level: 2, cost: "low", authority: "local", contributions: ["cause:failure-boundary"], available: true },
+  ] });
+  assert.deepEqual(plan.trace.selected, ["failing-test", "active-path"]);
+  assert.equal(plan.trace.rejected.find((item) => item.id === "duplicate-test-output")?.reason, "dominated");
+});
+
 test("selector prefers authoritative evidence and enforces subsystem budgets", () => {
   const uncertainty = initialUncertainty({ intent: "Fix visual auth race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
   const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 4, skillInvocations: 1, expensiveChecks: 1 }, used: 0, event: 0, trigger: "adversarial", candidates: [

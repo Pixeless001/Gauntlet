@@ -18,6 +18,7 @@ export interface InterventionCandidate {
   authority?: EvidenceAuthority;
   source?: string;
   reason?: string;
+  contributions?: string[];
   available: boolean;
 }
 export interface SelectedIntervention { id: string; kind: CandidateKind; resolves: UncertaintyKind[]; uncertainty: UncertaintyKind; level: EscalationLevel; cost: CostClass; authority: EvidenceAuthority; source: string; reason: string }
@@ -41,8 +42,8 @@ export function selectInterventions(input: { uncertainty: UncertaintyState; cand
     if (states.every((state) => state === "irrelevant")) { rejected.push({ id: candidate.id, reason: "irrelevant" }); continue; }
     if (!candidate.available) { rejected.push({ id: candidate.id, reason: "unavailable" }); continue; }
     if (input.supplied.includes(candidate.id) || selected.includes(candidate.id)) { rejected.push({ id: candidate.id, reason: "duplicate" }); continue; }
-    const covered = new Set(selected.flatMap((id) => targets(ordered.find((item) => item.id === id)!)));
-    if (resolves.every((kind) => covered.has(kind) || input.uncertainty[kind] === "resolved" || input.uncertainty[kind] === "irrelevant")) { rejected.push({ id: candidate.id, reason: "dominated" }); continue; }
+    const covered = new Set(selected.flatMap((id) => contributions(ordered.find((item) => item.id === id)!)));
+    if (contributions(candidate).every((claim) => covered.has(claim)) || resolves.every((kind) => input.uncertainty[kind] === "resolved" || input.uncertainty[kind] === "irrelevant")) { rejected.push({ id: candidate.id, reason: "dominated" }); continue; }
     if (input.used + selected.length >= input.budget.interventions) { rejected.push({ id: candidate.id, reason: "budget_exceeded" }); continue; }
     const selectedCandidates = selected.map((id) => ordered.find((item) => item.id === id)!);
     if (candidateKind(candidate) === "skill" && selectedCandidates.filter((item) => candidateKind(item) === "skill").length >= input.budget.skillInvocations) { rejected.push({ id: candidate.id, reason: "budget_exceeded" }); continue; }
@@ -62,6 +63,7 @@ function cost(value: CostClass): number { return { tiny: 0, low: 1, medium: 2, h
 function authority(value: EvidenceAuthority = "local"): number { return { repository: 0, local: 1, runtime: 2, cached: 3, external: 4 }[value]; }
 function expensive(candidate: InterventionCandidate): boolean { return candidate.level >= 4 || candidate.cost === "high"; }
 function targets(candidate: InterventionCandidate): UncertaintyKind[] { return [...new Set(candidate.resolves?.length ? candidate.resolves : [candidate.uncertainty])]; }
+function contributions(candidate: InterventionCandidate): string[] { return [...new Set(candidate.contributions?.length ? candidate.contributions : targets(candidate).map((target) => `uncertainty:${target}`))]; }
 function candidateKind(candidate: InterventionCandidate): CandidateKind { return candidate.kind ?? (candidate.skill ? "skill" : "evidence"); }
 function activation(candidate: InterventionCandidate): SelectedIntervention {
   return { id: candidate.id, kind: candidateKind(candidate), resolves: targets(candidate), uncertainty: candidate.uncertainty, level: candidate.level, cost: candidate.cost, authority: candidate.authority ?? "local", source: candidate.source ?? candidate.id, reason: candidate.reason ?? "Resolves remaining uncertainty" };
