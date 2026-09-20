@@ -10,6 +10,7 @@ import { captureBaseline, changedFiles } from "../src/repo/git.js";
 import { createRepoIndex } from "../src/repo/index.js";
 import { run } from "../src/repo/process.js";
 import type { ActiveExecutionContext } from "../src/execution-state/reconstruct.js";
+import { contract } from "./support.js";
 
 async function fixture(run: (cwd: string) => Promise<void>) { const cwd = await mkdtemp(join(tmpdir(), "gauntlet-")); try { await run(cwd); } finally { await rm(cwd, { recursive: true, force: true }); } }
 
@@ -76,27 +77,27 @@ test("filesystem fallback detects files added after the baseline", () => fixture
 
 test("ranks explicit paths and bounds context", () => fixture(async (cwd) => {
   await mkdir(join(cwd, "src")); await writeFile(join(cwd, "src", "retry.ts"), ""); await writeFile(join(cwd, "src", "other.ts"), "");
-  const packet = await selectContext(cwd, { intent: "Fix src/retry.ts", explicitPaths: ["src/retry.ts"], acceptanceCriteria: [], constraints: [] }, 1);
+  const packet = await selectContext(cwd, contract("Fix src/retry.ts", { explicitPaths: ["src/retry.ts"], expectedFrontier: ["src/retry.ts"] }), 1);
   assert.equal(packet.entries[0]?.path, "src/retry.ts"); assert.equal(packet.entries.length, 1);
 }));
 
 test("injects only applicable instructions in precedence order", () => fixture(async (cwd) => {
   await mkdir(join(cwd, "src/feature"), { recursive: true }); await mkdir(join(cwd, "other"));
   await writeFile(join(cwd, "AGENTS.md"), "root rule"); await writeFile(join(cwd, "src/AGENTS.md"), "src rule"); await writeFile(join(cwd, "other/AGENTS.md"), "other rule"); await writeFile(join(cwd, "src/feature/task.ts"), "");
-  const packet = await selectContext(cwd, { intent: "Fix src/feature/task.ts", explicitPaths: ["src/feature/task.ts"], acceptanceCriteria: [], constraints: [] });
+  const packet = await selectContext(cwd, contract("Fix src/feature/task.ts", { explicitPaths: ["src/feature/task.ts"], expectedFrontier: ["src/feature/task.ts"] }));
   assert.deepEqual(packet.instructions.map((value) => value.split(":")[0]), ["AGENTS.md", "src/AGENTS.md"]); assert.match(formatContext(packet), /root rule[\s\S]*src rule/); assert.doesNotMatch(formatContext(packet), /other rule/);
 }));
 
 test("formats the valid execution path without raw history", () => fixture(async (cwd) => {
   await writeFile(join(cwd, "source.ts"), "export const value = 1\n");
   const execution: ActiveExecutionContext = { task: "Fix behavior", acceptanceCriteria: [], constraints: [], validatedState: ["Cause established"], current: "Reuse existing primitive", relevantFiles: ["source.ts"], relevantSymbols: [], proofRefs: ["proof/test.log"], open: ["regression"] };
-  const packet = await selectContext(cwd, { intent: execution.task, explicitPaths: ["source.ts"], acceptanceCriteria: [], constraints: [] }); packet.execution = execution;
+  const packet = await selectContext(cwd, contract(execution.task, { explicitPaths: ["source.ts"], expectedFrontier: ["source.ts"] })); packet.execution = execution;
   const formatted = formatContext(packet); assert.match(formatted, /Validated: Cause established/); assert.match(formatted, /Open: regression/); assert.match(formatted, /proof\/test\.log/);
 }));
 
 test("ranks direct imports and corresponding tests after the explicit target", () => fixture(async (cwd) => {
   await mkdir(join(cwd, "src"));
   await writeFile(join(cwd, "src/retry.ts"), "import { wait } from './wait.js'; export const retry = wait"); await writeFile(join(cwd, "src/wait.ts"), "export const wait = 1"); await writeFile(join(cwd, "src/retry.test.ts"), "import { retry } from './retry.js'; test('retry', () => retry)");
-  const packet = await selectContext(cwd, { intent: "Change src/retry.ts", explicitPaths: ["src/retry.ts"], acceptanceCriteria: [], constraints: [] });
+  const packet = await selectContext(cwd, contract("Change src/retry.ts", { explicitPaths: ["src/retry.ts"], expectedFrontier: ["src/retry.ts"] }));
   assert.equal(packet.entries[0]?.path, "src/retry.ts"); assert.ok(packet.entries.some((entry) => entry.path === "src/wait.ts" && entry.reason.includes("imported"))); assert.ok(packet.entries.some((entry) => entry.path === "src/retry.test.ts" && entry.reason.includes("tests")));
 }));

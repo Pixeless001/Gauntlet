@@ -4,9 +4,11 @@ import { initialUncertainty } from "../src/control/uncertainty.js";
 import { planActivation, selectInterventions } from "../src/control/selector.js";
 import { activePath, rejectBranch, rejectedOverlap, type ExecutionCheckpoint } from "../src/execution-state/checkpoints.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
+import { contract, taskState } from "./support.js";
+import { controlRuntime } from "../src/control/runtime.js";
 
 test("selector chooses the cheapest relevant intervention and explains rejection", () => {
-  const uncertainty = initialUncertainty({ intent: "Fix auth race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const uncertainty = initialUncertainty(contract("Fix auth race"), "elevated");
   const trace = selectInterventions({ uncertainty, supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 2, trigger: "failure", candidates: [
     { id: "docs", uncertainty: "cause", level: 4, cost: "medium", available: true },
     { id: "search", uncertainty: "cause", level: 2, cost: "tiny", available: true },
@@ -17,7 +19,7 @@ test("selector chooses the cheapest relevant intervention and explains rejection
 });
 
 test("activation plan composes complementary candidate kinds", () => {
-  const uncertainty = initialUncertainty({ intent: "Fix a broken visual regression", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const uncertainty = initialUncertainty(contract("Fix a broken visual regression"), "elevated");
   const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 3 }, used: 0, event: 0, trigger: "test", candidates: [
     { id: "skill:investigate", kind: "skill", skill: "investigate", uncertainty: "cause", resolves: ["cause"], level: 3, cost: "low", available: true },
     { id: "browser", kind: "capability", uncertainty: "visual", resolves: ["visual"], level: 4, cost: "medium", available: true },
@@ -29,7 +31,7 @@ test("activation plan composes complementary candidate kinds", () => {
 });
 
 test("selector retains complementary claims for the same uncertainty", () => {
-  const uncertainty = initialUncertainty({ intent: "Fix a request race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const uncertainty = initialUncertainty(contract("Fix a request race"), "elevated");
   const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 3 }, used: 0, event: 0, trigger: "complementary-proof", candidates: [
     { id: "active-path", kind: "context", uncertainty: "cause", level: 1, cost: "tiny", authority: "runtime", contributions: ["cause:validated-path"], available: true },
     { id: "failing-test", kind: "proof", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", contributions: ["cause:failure-boundary"], available: true },
@@ -40,7 +42,7 @@ test("selector retains complementary claims for the same uncertainty", () => {
 });
 
 test("selector prefers authoritative proof and enforces subsystem budgets", () => {
-  const uncertainty = initialUncertainty({ intent: "Fix visual auth race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const uncertainty = initialUncertainty(contract("Fix visual auth race"), "elevated");
   const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 4, skillInvocations: 1, expensiveChecks: 1 }, used: 0, event: 0, trigger: "adversarial", candidates: [
     { id: "external-cause", kind: "proof", uncertainty: "cause", level: 2, cost: "tiny", authority: "external", available: true },
     { id: "repository-cause", kind: "proof", uncertainty: "cause", level: 2, cost: "medium", authority: "repository", available: true },
@@ -79,4 +81,23 @@ test("active paths reject missing checkpoints and broken ancestry", () => {
   assert.throws(() => activePath([], "missing"), /checkpoint is missing/);
   const orphan: ExecutionCheckpoint = { id: "orphan", parentId: "missing", kind: "implementation", status: "active", summary: "orphan", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] };
   assert.throws(() => activePath([orphan], "orphan"), /parent is missing/);
+});
+
+test("runtime control records asymmetric pressure and blocks unknown-pressure compaction", () => {
+  const state = taskState("Fix broken behavior");
+  const result = controlRuntime(state, { trigger: "activity", candidates: [], falseActivationCost: 5, missedActivationCost: 2 });
+  assert.equal(result.directive.action, "inspect"); assert.equal(result.boundary.pressure, "unknown");
+  assert.equal(state.control.decisions[0]?.pressure.falseActivationCost, 5);
+});
+
+test("runtime decisions retain state changes and proof gain", () => {
+  const value = taskState("Fix broken behavior");
+  const runtime = controlRuntime(value, { trigger: "activity", candidates: [], stateChange: ["progress:progress"], proofGain: ["artifact://task/t_000001"] });
+  assert.deepEqual(runtime.decision.stateChange, ["progress:progress"]); assert.deepEqual(runtime.decision.proofGain, ["artifact://task/t_000001"]); assert.equal(value.control.decisions.at(-1), runtime.decision);
+});
+
+test("source fingerprints reject repeated candidates without a global score", () => {
+  const uncertainty = initialUncertainty(contract("Fix race"), "elevated");
+  const trace = selectInterventions({ uncertainty, supplied: ["source:abc"], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 1, trigger: "source-change", candidates: [{ id: "search", kind: "proof", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", available: true, fingerprint: "abc" }] });
+  assert.deepEqual(trace.rejected, [{ id: "search", reason: "duplicate" }]);
 });

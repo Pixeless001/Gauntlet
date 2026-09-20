@@ -5,7 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 import { ConventionCache, discoverConventions, selectConventionFacts } from "../src/repo/conventions.js";
 import { inspectConventionDrift } from "../src/verify/convention-drift.js";
-import type { TaskState } from "../src/core/task-state.js";
+import { createControlState, type TaskState } from "../src/core/task-state.js";
+import { contract } from "./support.js";
+import { actionableRules, compileRules } from "../src/repo/rules.js";
 
 async function fixture() {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-conventions-"));
@@ -24,7 +26,7 @@ test("discovers compact proof-backed conventions and selects relevant facts", as
     assert.equal(profile.facts.find((fact) => fact.id === "primitive.validation")?.value, "zod");
     assert.equal(profile.facts.find((fact) => fact.id === "primitive.validation")?.strength, "strong");
     assert.equal(profile.facts.find((fact) => fact.id === "tool.test-runner")?.value, "vitest");
-    const selected = selectConventionFacts(profile, { intent: "add retry behavior", acceptanceCriteria: [], constraints: [], explicitPaths: [] });
+    const selected = selectConventionFacts(profile, contract("add retry behavior"));
     assert.ok(selected.length <= 3); assert.ok(selected.some((fact) => fact.id === "primitive.retry"));
     assert.ok((await readFile(join(cwd, ".gauntlet/repo-profile.json"), "utf8")).length < 64_000);
   } finally { await rm(cwd, { recursive: true, force: true }); }
@@ -73,7 +75,7 @@ test("reports a conflicting dependency from strong task-start proof", async () =
   const cwd = await fixture();
   try {
     const profile = await discoverConventions(cwd); await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { zod: "1", joi: "1" } }));
-    const state = { version: 1, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: { intent: "validation", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, baseline: { head: null, status: [], dependencies: ["zod"], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: profile.facts, conventionMetrics: { hints: 1, primitives: 1, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1 } satisfies TaskState;
+    const taskContract = contract("validation"); const state = { version: 2, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: ["zod"], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: profile.facts, conventionMetrics: { hints: 1, primitives: 1, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control: createControlState(taskContract) } satisfies TaskState;
     const findings = await inspectConventionDrift(cwd, state, [{ path: "package.json", added: 1, removed: 1 }]);
     assert.equal(findings[0]?.code, "convention-dependency-conflict");
   } finally { await rm(cwd, { recursive: true, force: true }); }
@@ -83,8 +85,17 @@ test("blocks a machine-verifiable strong architecture bypass", async () => {
   const cwd = await fixture();
   try {
     await mkdir(join(cwd, "src/routes"), { recursive: true }); await writeFile(join(cwd, "src/routes/team.ts"), "import { db } from '../database.js';\n");
-    const state = { version: 1, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: { intent: "Add route", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: [{ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sources: [], representatives: [] }], activities: [], findings: [], attempts: 1 } satisfies TaskState;
+    const taskContract = contract("Add route"); const state = { version: 2, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: [{ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sourceRefs: [], representatives: [] }], activities: [], findings: [], attempts: 1, control: createControlState(taskContract) } satisfies TaskState;
     const finding = (await inspectConventionDrift(cwd, state, [{ path: "src/routes/team.ts", added: 1, removed: 0 }]))[0];
     assert.equal(finding?.code, "convention-architecture-bypass"); assert.equal(finding?.blocking, true); assert.deepEqual(finding?.proof, ["src/routes/team.ts", "architecture.db-access"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("repository rules expose source, timing, and honest enforcement", () => {
+  const rules = compileRules([
+    { id: "architecture.layers", category: "architecture", value: "routes use services", strength: "strong", scope: ".", sourceRefs: [{ path: "src/service.ts", fingerprint: "a".repeat(64) }], representatives: [] },
+    { id: "primitive.retry", category: "primitive", value: "reuse local retry", strength: "strong", scope: ".", sourceRefs: [], representatives: [] },
+  ]);
+  assert.equal(rules[0]?.timing, "before_stop"); assert.equal(rules[0]?.enforcement, "structural"); assert.equal(rules[1]?.enforcement, "instruction");
+  assert.deepEqual(actionableRules(rules, "before_stop").map((item) => item.id), ["architecture.layers"]);
 });

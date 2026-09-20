@@ -3,9 +3,10 @@ import test from "node:test";
 import { assessProgress } from "../src/execution-state/progress.js";
 import type { ExecutionCheckpoint } from "../src/execution-state/checkpoints.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
+import { contract } from "./support.js";
 
 const point = (id: string, status: ExecutionCheckpoint["status"] = "active"): ExecutionCheckpoint => ({ id, kind: "implementation", status, summary: id, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [], ...(status === "rejected" ? { rejectionReason: "invalid approach" } : {}) });
-const uncertainty = () => initialUncertainty({ intent: "Fix broken behavior", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+const uncertainty = () => initialUncertainty(contract("Fix broken behavior"), "elevated");
 
 test("progress stalls only when repeated work adds no proof", () => {
   const checkpoints = [point("root")];

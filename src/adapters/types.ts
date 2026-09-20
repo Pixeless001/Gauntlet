@@ -10,5 +10,7 @@ export interface HarnessCapabilities {
   delegation: { supported: boolean; callback: boolean; modelSelection: boolean };
   telemetry: { tokens: boolean; cost: boolean };
   environment: { worktrees: boolean; sandbox: boolean };
+  output: { replacement: "general" | "feedback" | "mcp" | "none"; preventsInitialContextCost: boolean };
+  compaction: { hooks: boolean };
 }
 export interface HarnessAdapter { name: HarnessName; configurationPath: string; nativeEvents: string[]; capabilities: HarnessCapabilities; translate(input: unknown, nativeEvent?: string): GauntletEvent }

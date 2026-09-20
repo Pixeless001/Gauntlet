@@ -1,7 +1,7 @@
 import type { ProofAuthority, CostClass } from "../control/selector.js";
 import type { UncertaintyKind } from "../control/uncertainty.js";
 
-export type DetailLevel = "reference" | "concise" | "detailed";
+export type DetailLevel = "reference" | "concise" | "detailed" | "raw";
 export interface SourceRef { source: string; locator: string; fingerprint?: string }
 export interface ProofClaim { id: string; subject: string; statement: string; authority: ProofAuthority; sourceRefs: SourceRef[] }
 export interface ProofPacket {
@@ -22,7 +22,7 @@ export interface ProofView {
 }
 
 const authorityRank: Record<ProofAuthority, number> = { repository: 0, local: 1, runtime: 2, cached: 3, external: 4 };
-const detailRank: Record<DetailLevel, number> = { reference: 0, concise: 1, detailed: 2 };
+const detailRank: Record<DetailLevel, number> = { reference: 0, concise: 1, detailed: 2, raw: 3 };
 
 /** Merge identical claims while retaining the strongest authority and every source. */
 export function fuseProof(packets: ProofPacket[], maxDetail: DetailLevel = "concise"): ProofPacket[] {
@@ -41,7 +41,7 @@ export function fuseProof(packets: ProofPacket[], maxDetail: DetailLevel = "conc
 }
 
 export function mayExpand(packet: ProofPacket, uncertainty: UncertaintyKind, state: ProofSelectionState): boolean {
-  return packet.resolves.includes(uncertainty) && !state.resolved.has(uncertainty) && packet.detailLevel !== "detailed";
+  return packet.resolves.includes(uncertainty) && !state.resolved.has(uncertainty) && packet.detailLevel !== "detailed" && packet.detailLevel !== "raw";
 }
 
 function mergeRefs(left: SourceRef[], right: SourceRef[]): SourceRef[] {

@@ -10,7 +10,7 @@ import { detectAmbiguity, extractContract } from "./intent.js";
 import { measure, type TaskMeasurement } from "./measure.js";
 import { STEERING_POLICY } from "./steer.js";
 import type { TaskActivity } from "./events.js";
-import type { TaskState } from "./task-state.js";
+import { createControlState, type TaskState } from "./task-state.js";
 import { StateStore } from "../state/store.js";
 import { deriveFacts } from "../repo/memory.js";
 import { compact, shouldCompact, type ContinuationRecord } from "./compact.js";
@@ -24,94 +24,175 @@ import { normalizeSearch, repeatedSearch } from "../context/governor.js";
 import { LocalExecutionEnvironment } from "../execution/local.js";
 import { verifyCounterfactual, type CounterfactualEnvironment } from "../verify/counterfactual.js";
 import { initialUncertainty } from "../control/uncertainty.js";
-import { planActivation } from "../control/selector.js";
 import { observeExecution, recordVerification } from "../execution-state/runtime.js";
 import { buildStructuralIndex, updateStructuralIndex } from "../intelligence/index.js";
 import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.js";
 import { domainCandidates } from "../domains/resolver.js";
-import { graphExpansionCandidate } from "../intelligence/working-graph.js";
+import { graphExpansionCandidate, inspectImpact } from "../intelligence/working-graph.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
 import { remainingProof, type ProofKind } from "../verify/proof-selector.js";
+import { ArtifactStore } from "../output/store.js";
+import { CapabilityRegistry, type Capability, type CapabilityKind } from "../capabilities/registry.js";
+import { CapabilityResolver } from "../capabilities/resolver.js";
+import { adapter } from "../adapters/install.js";
+import type { HarnessName } from "../adapters/types.js";
+import { controlRuntime } from "../control/runtime.js";
+import { assessScope } from "../intelligence/scope.js";
+import { compileRules } from "../repo/rules.js";
+import { decideCompletion } from "../verify/completion.js";
+import { hasSufficientProof } from "../verify/proof-selector.js";
+import { capabilityCandidates } from "../control/capabilities.js";
+import type { RuntimeDirective } from "../control/types.js";
 
-export interface StartResult { state: TaskState; injection: string; clarification: string | null }
-export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
-export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableProof?: ProofKind[] }
+export interface StartResult { state: TaskState; injection: string; clarification: string | null; directive: RuntimeDirective }
+export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null; directive: RuntimeDirective }
+export interface LifecycleResult { state: TaskState; continuation: ContinuationRecord }
+export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableProof?: ProofKind[]; harness?: HarnessName; capabilities?: Capability[] }
 export class GauntletEngine {
   private readonly store: StateStore;
-  constructor(readonly cwd: string, private readonly options: EngineOptions = {}) { this.store = new StateStore(cwd); }
+  private readonly registry = new CapabilityRegistry();
+  private readonly resolver: CapabilityResolver;
+  constructor(readonly cwd: string, private readonly options: EngineOptions = {}) {
+    this.store = new StateStore(cwd);
+    this.registry.register({ id: "gauntlet:output", kind: "output", source: "gauntlet", available: true, value: () => new ArtifactStore(cwd) });
+    this.registry.register({ id: "gauntlet:execution", kind: "execution", source: "gauntlet", available: true, value: () => new LocalExecutionEnvironment(cwd) });
+    this.registry.register({ id: "gauntlet:search", kind: "search", source: "gauntlet", available: true, value: () => createRepoIndex });
+    this.registry.register({ id: "gauntlet:skill", kind: "skill", source: "gauntlet", available: true, value: () => loadSkill });
+    if (options.harness) {
+      const host = adapter(options.harness);
+      this.registry.register({ id: `host:${host.name}:output`, kind: "output", source: "host", available: host.capabilities.output.replacement !== "none", value: () => host.capabilities.output });
+      this.registry.register({ id: `host:${host.name}:browser`, kind: "browser", source: "host", available: host.capabilities.tools.browser, value: () => host.capabilities.tools.browser });
+      this.registry.register({ id: `host:${host.name}:delegation`, kind: "delegation", source: "host", available: host.capabilities.delegation.supported, value: () => host.capabilities.delegation });
+    }
+    for (const capability of options.capabilities ?? []) this.registry.register(capability);
+    this.resolver = new CapabilityResolver(this.registry);
+  }
   async state(id: string): Promise<TaskState> { return this.store.loadTask(id); }
+  capability<T>(kind: CapabilityKind) { return this.resolver.resolve<T>(kind); }
+  async clarify(id: string, question: string, answer: string): Promise<TaskState> {
+    return this.store.updateTask(id, (state) => { state.clarifications = [{ question, answer, at: new Date().toISOString() }]; });
+  }
 
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
     try {
       const state = await this.store.loadTask(id);
       const context = await createContextPacket(this.cwd, state.contract, state.conventions, state.baseline.index, reconstruct(state));
       const ambiguity = detectAmbiguity(state.contract);
-      return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
+      return { state, injection: await injection(context, state.control?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null, directive: startDirective(state.contract.size, ambiguity.costly) };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const contract = extractContract(intent), baseline = await captureBaseline(this.cwd), profile = await detectRepository(this.cwd);
+    const baseline = await captureBaseline(this.cwd), profile = await detectRepository(this.cwd);
+    const contract = extractContract(intent, { ...(baseline.index ? { files: baseline.index.files } : {}), dependencies: baseline.dependencies });
+    const initialTargets = contract.explicitPaths.filter((path) => /\.[cm]?[jt]sx?$/.test(path));
+    if (baseline.index && initialTargets.length) {
+      const structural = await buildStructuralIndex(this.cwd, baseline.index, initialTargets, 160); baseline.publicExports = Object.fromEntries(Object.entries(structural.files).map(([path, file]) => [path, file.exports])); await saveStructuralIndex(this.cwd, structural);
+    }
     const conventionProfile = await discoverConventions(this.cwd, contract.explicitPaths, undefined, baseline.index), conventions = selectConventionFacts(conventionProfile, contract);
     const context = await createContextPacket(this.cwd, contract, conventions, baseline.index);
     const ambiguity = detectAmbiguity(contract);
     const risk = assessRisk(contract);
     const uncertainty = initialUncertainty(contract, risk.level), rootId = randomUUID(), budget = { ...DEFAULT_INTERVENTION_BUDGET };
-    const activation = planActivation({ uncertainty, candidates: [...skillCandidates(contract, "start", risk.level), ...domainCandidates(profile, contract)], supplied: [], budget, used: 0, event: 0, trigger: "task_start" });
+    const control = createControlState(contract, rootId);
+    control.uncertainty = uncertainty;
+    control.budget = budget;
+    control.capabilities = this.registry.all().map((item) => ({ kind: item.kind, source: item.source, available: item.available }));
+    const state: TaskState = { version: 2, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, clarifications: [], baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, rules: compileRules(conventions), conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control };
+    const runtime = controlRuntime(state, { trigger: "task_start", candidates: [...skillCandidates(contract, "start", risk.level), ...domainCandidates(profile, contract)] }), activation = runtime.plan;
     const activeSkills = activation.skills.flatMap((candidate) => candidate.skill ? [candidate.skill] : []);
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [activation.trace], interventionsUsed: activeSkills.length, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, exhaustedEscalation: {}, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } } };
+    control.activeSkills = activeSkills.slice(0, 1); control.interventionsUsed = control.activeSkills.length;
+    if (control.activeSkills.length) runtime.decision.stateChange = control.activeSkills.map((skill) => `workflow:${skill}`);
     await this.store.saveTask(state);
-    return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
+    return { state, injection: await injection(context, state.control?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null, directive: startDirective(contract.size, ambiguity.costly) };
   }
 
   async activity(id: string, activity: TaskActivity): Promise<ActivityResult> {
+    const currentState = await this.store.loadTask(id);
+    if (activity.toolPayload) {
+      const open = Object.entries(currentState.control.uncertainty).filter(([, value]) => value === "open" || value === "partial").map(([kind]) => kind).join(", ");
+      const artifact = await new ArtifactStore(this.cwd).put(id, activity.toolPayload, currentState.activities.length, currentState.contract.goal, open);
+      const { toolPayload: _stored, ...bounded } = activity;
+      activity = { ...bounded, artifactRef: artifact.artifactRef };
+    }
     const fingerprint = activity.kind === "file_read" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
-    let workflowChanged = false;
+    let writtenImpact: ReturnType<typeof inspectImpact> | null = null, immediateFindings: TaskState["findings"] = [];
+    if (activity.kind === "file_write" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/")) {
+      const repository = await createRepoIndex(this.cwd), cached = await loadStructuralIndex(this.cwd, repository.head);
+      const structural = cached ? await updateStructuralIndex(this.cwd, repository, cached, [activity.target], 160) : await buildStructuralIndex(this.cwd, repository, [activity.target], 160);
+      await saveStructuralIndex(this.cwd, structural); writtenImpact = inspectImpact(structural, activity.target);
+      const changes = await changedFiles(this.cwd, currentState.baseline), profile = await detectRepository(this.cwd), scope = assessScope(currentState.contract, changes, currentState.baseline.dependencies, profile.dependencies ?? [], structural, currentState.baseline.publicExports);
+      immediateFindings = [...await inspectTestIntegrity(this.cwd, currentState.baseline.tests, changes), ...await inspectConventionDrift(this.cwd, currentState, changes)].filter((item) => item.blocking);
+      immediateFindings.push(...scope.hardSignals.map((message) => ({ code: "scope-hard-signal", severity: "error" as const, blocking: true, message, proof: scope.actual })));
+    }
+    let workflowChanged = false, directive: RuntimeDirective = { action: "continue", reason: "No control action is required" };
     const state = await this.store.updateTask(id, (value) => {
-      value.activities.push(activity); if (value.activities.length > 1_000) { value.activities.splice(0, value.activities.length - 1_000); if (value.session) value.session.lastCompactedActivity = Math.max(0, value.session.lastCompactedActivity - 1); } const loop = loopFinding(value);
+      value.activities.push(activity); if (activity.artifactRef) value.control.context.artifactRefs = [...value.control.context.artifactRefs, activity.artifactRef].slice(-200); if (activity.kind === "message") value.control.context.recentCompletedTurns = [...value.control.context.recentCompletedTurns, value.activities.length - 1].slice(-3); if (value.activities.length > 1_000) { const removed = value.activities.length - 1_000; value.activities.splice(0, removed); value.control.lastCompactedActivity = Math.max(0, value.control.lastCompactedActivity - removed); value.control.context.recentCompletedTurns = value.control.context.recentCompletedTurns.map((index) => index - removed).filter((index) => index >= 0).slice(-3); } const loop = loopFinding(value);
+      value.findings = deduplicateFindings([...value.findings, ...immediateFindings]);
       if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
-      if (value.session && activity.kind === "file_read" && activity.target && fingerprint) {
-        const existing = value.session.observations.find((item) => item.path === activity.target);
-        if (existing?.hash === fingerprint.hash) value.session.repeatReadsDetected += 1;
-        value.session.observations = [{ path: activity.target, hash: fingerprint.hash, lastObserved: value.activities.length, relevantSymbols: [] }, ...value.session.observations.filter((item) => item.path !== activity.target)].slice(0, 64);
+      if (value.control && activity.kind === "file_read" && activity.target && fingerprint) {
+        const existing = value.control.observations.find((item) => item.path === activity.target);
+        if (existing?.hash === fingerprint.hash) value.control.repeatReadsDetected += 1;
+        value.control.observations = [{ path: activity.target, hash: fingerprint.hash, lastObserved: value.activities.length, relevantSymbols: [] }, ...value.control.observations.filter((item) => item.path !== activity.target)].slice(0, 64);
       }
-      if (value.session && activity.kind === "file_write" && activity.target) value.session.observations = value.session.observations.filter((item) => item.path !== activity.target);
+      if (value.control && activity.kind === "file_write" && activity.target) {
+        value.control.observations = value.control.observations.filter((item) => item.path !== activity.target);
+        value.control.scope.actual = [...new Set([...value.control.scope.actual, activity.target])];
+        if (writtenImpact) {
+          value.control.impact = { ...value.control.impact, owners: writtenImpact.owner ? [writtenImpact.owner] : [], dependencies: writtenImpact.dependencies, callers: writtenImpact.callers, tests: writtenImpact.tests, packageCrossings: writtenImpact.packageCrossings, publicSurface: writtenImpact.publicSurface ? [writtenImpact.target] : [], confidence: writtenImpact.confidence };
+          const expected = value.control.scope.expected.includes(activity.target), material = writtenImpact.packageCrossings.length > 0 || writtenImpact.publicSurface || /(?:^|\/)(?:migrations?|schema|auth|security|permissions?)(?:\/|\.|$)/i.test(activity.target);
+          if (!expected && material) { value.control.scope.unexpected = [...new Set([...value.control.scope.unexpected, activity.target])]; value.control.uncertainty.scope = "open"; }
+        }
+      }
       const search = activity.kind === "command" && activity.target ? normalizeSearch(activity.target) : null;
-      if (value.session && search) { const observation = { ...search, version: value.baseline.index?.head ?? "filesystem", matches: [] }, searches = value.session.searches ?? []; if (repeatedSearch(searches, observation)) value.session.repeatSearchesDetected = (value.session.repeatSearchesDetected ?? 0) + 1; else value.session.searches = [observation, ...searches].slice(0, 32); }
-      if (value.session) {
+      if (value.control && search) { const observation = { ...search, version: value.baseline.index?.head ?? "filesystem", matches: [] }, searches = value.control.searches ?? []; if (repeatedSearch(searches, observation)) value.control.repeatSearchesDetected = (value.control.repeatSearchesDetected ?? 0) + 1; else value.control.searches = [observation, ...searches].slice(0, 32); }
+      if (value.control) {
         const transition = observeExecution(value, activity);
-        if (transition.investigate && value.session.uncertainty) {
-          value.session.uncertainty.cause = "open";
+        let routed = false;
+        if (transition.investigate && value.control.uncertainty) {
+          value.control.uncertainty.cause = "open";
           const candidate = { id: "skill:investigate", kind: "skill" as const, skill: "investigate" as const, uncertainty: "cause" as const, resolves: ["cause" as const], level: 3 as const, cost: "low" as const, authority: "local" as const, source: "skills/investigate/SKILL.md", reason: "Execution progress stalled while cause remains open", available: true };
-          const trace = planActivation({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: value.session.activeSkills.map((skill) => `skill:${skill}`), budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: transition.trigger ?? "execution_state" }).trace;
+          const runtime = controlRuntime(value, { trigger: transition.trigger ?? (activity.kind === "file_write" ? "file_write" : activity.outcome === "fail" ? "failure" : "activity"), candidates: [candidate], supplied: value.control.activeSkills.map((skill) => `skill:${skill}`), missedActivationCost: 3, proofGain: activity.artifactRef ? [activity.artifactRef] : [] }), trace = runtime.plan.trace; directive = runtime.directive;
+          routed = true;
           if (trace.selected.includes(candidate.id)) {
             trace.changedState = true;
-            value.session.activeSkills = ["investigate"];
-            value.session.interventionsUsed = (value.session.interventionsUsed ?? 0) + 1;
+            value.control.activeSkills = ["investigate"];
+            value.control.interventionsUsed = (value.control.interventionsUsed ?? 0) + 1;
+            runtime.decision.stateChange = ["workflow:investigate"];
             workflowChanged = true;
           }
-          value.session.selectionTraces = [...(value.session.selectionTraces ?? []), trace].slice(-64);
         }
-        if (transition.causeValidated && value.session.uncertainty) {
-          value.session.uncertainty.cause = "resolved";
+        if (transition.causeValidated && value.control.uncertainty) {
+          value.control.uncertainty.cause = "resolved";
           const candidate = { id: "skill:implement", kind: "skill" as const, skill: "implement" as const, uncertainty: "behavior" as const, resolves: ["behavior" as const, "scope" as const], level: 3 as const, cost: "low" as const, authority: "local" as const, source: "skills/implement/SKILL.md", reason: "Validated cause makes implementation the next useful workflow", available: true };
-          const activation = planActivation({ uncertainty: value.session.uncertainty, candidates: [candidate], supplied: [], budget: value.session.budget, used: value.session.interventionsUsed ?? 0, event: value.activities.length, trigger: "cause_validated" });
+          const runtime = controlRuntime(value, { trigger: "cause_validated", candidates: [candidate], missedActivationCost: 3, proofGain: activity.artifactRef ? [activity.artifactRef] : [] }), activation = runtime.plan; directive = runtime.directive;
+          routed = true;
           if (activation.skills.length) {
-            activation.trace.changedState = value.session.activeSkills.length !== 1 || value.session.activeSkills[0] !== "implement";
-            value.session.activeSkills = ["implement"];
-            value.session.interventionsUsed = (value.session.interventionsUsed ?? 0) + 1;
+            activation.trace.changedState = value.control.activeSkills.length !== 1 || value.control.activeSkills[0] !== "implement";
+            value.control.activeSkills = ["implement"];
+            value.control.interventionsUsed = (value.control.interventionsUsed ?? 0) + 1;
+            runtime.decision.stateChange = ["workflow:implement", "uncertainty:cause=resolved"];
             workflowChanged = true;
           }
-          value.session.selectionTraces = [...(value.session.selectionTraces ?? []), activation.trace].slice(-64);
         }
+        if (!routed) directive = controlRuntime(value, { trigger: activity.kind === "file_write" ? "file_write" : activity.outcome === "fail" ? "failure" : "activity", candidates: [], stateChange: transition.progress ? [`progress:${transition.progress.toLowerCase()}`] : [], proofGain: activity.artifactRef ? [activity.artifactRef] : activity.proofRef ? [activity.proofRef] : [] }).directive;
       }
     });
+    if (immediateFindings.length) directive = { action: "validate", reason: immediateFindings.map((item) => item.message).join("; ") };
     const decision = shouldCompact(state); let continuation = decision.compact || workflowChanged ? compact(state) : null;
     if (continuation && workflowChanged) {
-      const skill = state.session?.activeSkills[0];
+      const skill = state.control?.activeSkills[0];
       continuation = { ...continuation, ...(skill ? { workflow: skill, guidance: await loadSkill(skill) } : {}) };
     }
-    if (continuation && decision.compact) await this.store.updateTask(id, (value) => { if (value.session) { value.session.lastCompactedActivity = value.activities.length; value.session.compactions += 1; } });
-    return { state, continuation };
+    if (continuation && decision.compact) await this.store.updateTask(id, (value) => { if (value.control) { value.control.lastCompactedActivity = value.activities.length; value.control.compactions += 1; } });
+    return { state, continuation, directive };
+  }
+
+  async lifecycle(id: string, phase: "pre_compact" | "post_compact"): Promise<LifecycleResult> {
+    const state = await this.store.updateTask(id, (value) => {
+      controlRuntime(value, { trigger: "lifecycle", candidates: [], stateChange: [`lifecycle:${phase}`] });
+      if (phase === "pre_compact") { value.control.lastCompactedActivity = value.activities.length; value.control.compactions += 1; }
+    });
+    return { state, continuation: compact(state) };
   }
 
   async finish(id: string): Promise<TaskMeasurement> {
@@ -125,43 +206,64 @@ export class GauntletEngine {
       state.conventionMetrics.interventions = state.findings.filter((item) => item.code.startsWith("convention-")).length;
     }
     const codeChanges = changes.filter((item) => /\.[cm]?[jt]sx?$/.test(item.path));
-    if (changes.length && state.session?.uncertainty?.location === "partial") state.session.uncertainty.location = "resolved";
+    if (changes.length && state.control?.uncertainty?.location === "partial") state.control.uncertainty.location = "resolved";
     const currentIndex = codeChanges.length ? await createRepoIndex(this.cwd) : state.baseline.index;
     const cachedStructural = currentIndex ? await loadStructuralIndex(this.cwd, currentIndex.head) : null;
     const structuralTargets = [...new Set([...state.contract.explicitPaths, ...codeChanges.map((item) => item.path), ...state.workingSet])].filter((path) => /\.[cm]?[jt]sx?$/.test(path));
-    const graphCandidate = state.session?.uncertainty && codeChanges.length ? graphExpansionCandidate(state.session.uncertainty, Boolean(currentIndex)) : null;
-    const graphActivation = graphCandidate && state.session ? planActivation({ uncertainty: state.session.uncertainty!, candidates: [graphCandidate], supplied: [], budget: state.session.budget, used: state.session.interventionsUsed ?? 0, event: state.activities.length, trigger: "before_stop_impact" }) : null;
-    if (graphActivation && state.session) state.session.selectionTraces = [...(state.session.selectionTraces ?? []), graphActivation.trace].slice(-64);
+    const graphCandidate = state.control?.uncertainty && codeChanges.length ? graphExpansionCandidate(state.control.uncertainty, Boolean(currentIndex)) : null;
+    const available = Object.fromEntries((["docs", "browser", "delegation"] as const).map((kind) => [kind, Boolean(this.capability(kind).capability)]));
+    const candidates = [...(graphCandidate ? [graphCandidate] : []), ...capabilityCandidates(state, available)];
+    const beforeStop = controlRuntime(state, { trigger: "before_stop", candidates, missedActivationCost: 4 }), graphActivation = beforeStop.plan;
     const expandGraph = Boolean(graphActivation?.graphExpansions.length);
+    for (const selected of graphActivation.capabilities) {
+      if (selected.id === "capability:docs") state.control.externalDocCalls += 1;
+      if (selected.id === "capability:browser") state.control.browserActivations += 1;
+      if (selected.id === "capability:delegation") state.control.delegations += 1;
+    }
+    if (graphActivation.trace.selected.length) beforeStop.decision.stateChange = graphActivation.trace.selected.map((item) => `selected:${item}`);
     const structural = currentIndex && codeChanges.length && expandGraph ? cachedStructural
       ? await updateStructuralIndex(this.cwd, currentIndex, cachedStructural, codeChanges.map((item) => item.path), 160)
       : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : !codeChanges.length ? cachedStructural ?? undefined : undefined;
     if (structural) await saveStructuralIndex(this.cwd, structural);
-    if (expandGraph && structural && state.session) { state.session.graphExpansions = (state.session.graphExpansions ?? 0) + 1; state.session.interventionsUsed = (state.session.interventionsUsed ?? 0) + 1; }
+    if (expandGraph && structural) {
+      const artifact = await new ArtifactStore(this.cwd).put(state.id, { operation: "inspect-impact", target: structuralTargets.join(","), input: JSON.stringify(structuralTargets), output: JSON.stringify(structural), status: "pass", semanticDescription: "Bounded repository impact inspection", paths: structuralTargets, symbols: [], processor: "json" }, state.activities.length, state.contract.goal, "location, repository fit, regression");
+      state.control.context.artifactRefs = [...state.control.context.artifactRefs, artifact.artifactRef].slice(-200); beforeStop.decision.proofGain.push(artifact.artifactRef);
+    }
+    if (expandGraph && structural && state.control) { state.control.graphExpansions = (state.control.graphExpansions ?? 0) + 1; state.control.interventionsUsed = (state.control.interventionsUsed ?? 0) + 1; }
     const profile = await detectRepository(this.cwd);
-    const plan = selectVerification(profile, changes, currentIndex?.files, structural, state.session?.uncertainty ? { uncertainty: state.session.uncertainty, budget: state.session.budget, event: state.activities.length } : undefined);
-    if (plan.selectionTrace && state.session) state.session.selectionTraces = [...(state.session.selectionTraces ?? []), plan.selectionTrace].slice(-64);
+    const scope = assessScope(state.contract, changes, state.baseline.dependencies, profile.dependencies ?? [], structural, state.baseline.publicExports);
+    state.control.scope = scope;
+    for (const message of scope.hardSignals) state.findings.push({ code: "scope-hard-signal", severity: "error", blocking: true, message, proof: scope.actual });
+    for (const message of scope.softSignals) state.findings.push({ code: "scope-soft-signal", severity: "warning", blocking: false, message, proof: scope.actual });
+    const plan = selectVerification(profile, changes, currentIndex?.files, structural, state.control?.uncertainty ? { uncertainty: state.control.uncertainty, budget: state.control.budget, event: state.activities.length } : undefined);
+    if (plan.selectionTrace && state.control) state.control.traces = [...(state.control.traces ?? []), plan.selectionTrace].slice(-64);
     const results = await runVerification(this.cwd, plan, undefined, state.id);
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
     if (risk.level === "elevated" && newTest && testCheck && state.baseline.head && this.options.preChangeEnvironment) {
       const candidateTests = changes.filter((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path)).map((change) => change.path), before = await this.options.preChangeEnvironment(state.baseline.head, candidateTests), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
       if (counterfactual.status === "weak") state.findings.push({ code: "weak-counterfactual", severity: "warning", blocking: true, message: "The new behavioral check also passes against pre-change behavior.", proof: counterfactual.proof });
     }
-    if (state.session?.uncertainty && !state.findings.some((item) => item.code.startsWith("convention-"))) state.session.uncertainty.repoFit = state.session.uncertainty.repoFit === "irrelevant" ? "irrelevant" : "resolved";
+    if (state.control?.uncertainty && !state.findings.some((item) => item.code.startsWith("convention-"))) state.control.uncertainty.repoFit = state.control.uncertainty.repoFit === "irrelevant" ? "irrelevant" : "resolved";
     const machinePassed = results.length > 0 && results.every((result) => result.status === "pass") && state.findings.every((finding) => !finding.blocking);
     const supplied: ProofKind[] = ["diff", ...(structural ? ["graph" as const] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test" as const] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule" as const])];
+    state.control.availableProof = [...new Set(supplied)];
+    beforeStop.decision.proofGain = [...beforeStop.decision.proofGain, ...results.map((result) => result.proof).filter((item): item is string => Boolean(item))];
     const obtainable: ProofKind[] = ["diff", "repository_rule", ...(currentIndex ? ["search" as const] : []), ...(structural || currentIndex ? ["graph" as const] : []), ...(plan.checks.some((check) => check.id.includes("test")) ? ["test" as const] : []), ...(this.options.availableProof ?? [])];
-    const outstanding = machinePassed && state.session?.uncertainty ? remainingProof(state.session.uncertainty, supplied, obtainable) : [];
+    const outstanding = machinePassed && state.control?.uncertainty ? remainingProof(state.control.uncertainty, supplied, obtainable) : [];
     for (const item of outstanding) state.findings.push({ code: `unresolved-proof-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.proof} proof before completion.`, proof: [] });
-    const passed = machinePassed && outstanding.length === 0;
+    if (machinePassed && state.control.uncertainty) for (const kind of Object.keys(state.control.uncertainty) as (keyof typeof state.control.uncertainty)[]) if (state.control.uncertainty[kind] !== "irrelevant" && hasSufficientProof(kind, supplied)) state.control.uncertainty[kind] = "resolved";
+    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied);
+    for (const proof of completion.missingProof) state.findings.push({ code: `missing-preservation-${proof}`, severity: "error", blocking: true, message: `Required preservation proof is unavailable: ${proof}`, proof: [] });
+    const passed = machinePassed && outstanding.length === 0 && completion.status === "complete";
     recordVerification(state, passed, results.map((result) => result.proof).filter((item): item is string => Boolean(item)), supplied);
-    const value = measure(state, changes, results);
+    if (passed) state.control.activeSkills = [];
+    const value = measure(state, changes, results, new Date(), completion);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;
   }
 
   async retry(id: string): Promise<void> {
-    await this.store.updateTask(id, (state) => { state.attempts += 1; });
+    await this.store.updateTask(id, (state) => { state.attempts += 1; state.control.lifecycle.corrections += 1; });
   }
 }
 
@@ -173,4 +275,9 @@ async function injection(context: Awaited<ReturnType<typeof createContextPacket>
 function deduplicateFindings<T extends { code: string; proof: string[] }>(findings: T[]): T[] {
   const seen = new Set<string>();
   return findings.filter((finding) => { const key = `${finding.code}:${finding.proof.join(":")}`; if (seen.has(key)) return false; seen.add(key); return true; });
+}
+
+function startDirective(size: TaskState["contract"]["size"], clarification: boolean): RuntimeDirective {
+  if (clarification) return { action: "clarify", reason: "Material ambiguity changes observable behavior or a system boundary" };
+  return size === "distributed" || size === "systemic" ? { action: "plan", reason: `${size} impact requires an explicit execution plan` } : { action: "continue", reason: "Local impact does not require a separate planning phase" };
 }

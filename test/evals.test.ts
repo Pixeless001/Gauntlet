@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runBuiltInEvals, saveEvalRun } from "../src/measure/eval-runner.js";
+import { evalSuites, runBuiltInEvals, runEvalSuite, saveEvalRun } from "../src/measure/eval-runner.js";
 import { interventionRoi, selectionQuality } from "../src/measure/evals.js";
 import { ARCHITECTURE_FIXTURES } from "../src/measure/fixtures.js";
 
@@ -13,8 +13,12 @@ test("built-in routing and silence evals persist concrete proof", async () => {
   finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("every evaluation suite executes structured cases", async () => {
+  for (const suite of evalSuites) { const results = await runEvalSuite(suite); assert.ok(results.length > 0); assert.ok(results.every((item) => item.passed && item.proof.length)); }
+});
+
 test("built-in evaluations cover restraint, active paths, and marginal context", () => {
-  const results = runBuiltInEvals(); assert.equal(results.every((item) => item.passed), true); assert.deepEqual(results.slice(-3).map((item) => item.caseId), ["negative-routing", "rejected-branch-quarantine", "marginal-context"]);
+  const results = runBuiltInEvals(); assert.equal(results.every((item) => item.passed), true); for (const id of ["negative-routing", "rejected-branch-quarantine", "marginal-context", "stall-routing", "scope-boundary", "timed-rule", "focused-clarification", "visual-activation", "boundary-safety", "truthful-stop"]) assert.ok(results.some((item) => item.caseId === id));
 });
 
 test("architecture fixtures cover required hard tasks and explicit stop conditions", () => {

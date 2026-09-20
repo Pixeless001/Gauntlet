@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadLessons, saveLesson, sourceFingerprint } from "../src/repo/lessons.js";
 import { createContextPacket, formatContext } from "../src/core/context.js";
+import { contract } from "./support.js";
 
 test("lessons remain small, scoped, and proof-backed", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-lessons-"));
@@ -21,7 +22,7 @@ test("verified lessons enter the bounded task context", async () => {
   try {
     await writeFile(join(cwd, "auth.ts"), "export const auth = true"); const fingerprint = await sourceFingerprint(cwd, "auth.ts"); assert.ok(fingerprint);
     await saveLesson(cwd, { scope: ".", fact: "auth errors use AuthError", source: "auth.ts", fingerprint });
-    const packet = await createContextPacket(cwd, { intent: "change auth.ts", acceptanceCriteria: [], constraints: [], explicitPaths: ["auth.ts"] });
+    const packet = await createContextPacket(cwd, contract("change auth.ts", { explicitPaths: ["auth.ts"], expectedFrontier: ["auth.ts"] }));
     assert.match(formatContext(packet), /Verified repository lessons:[\s\S]*AuthError/);
     assert.ok(packet.proof?.some((item) => item.id.startsWith("lesson:") && item.claims[0]?.authority === "cached"));
   } finally { await rm(cwd, { recursive: true, force: true }); }

@@ -3,8 +3,7 @@ import test from "node:test";
 import { MAX_AUTOMATIC_CORRECTIONS, DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
 import { assessRisk } from "../src/core/risk.js";
 import { loadSkill, routeSkills } from "../src/core/skills.js";
-
-const contract = (intent: string) => ({ intent, acceptanceCriteria: [], constraints: [], explicitPaths: [] });
+import { contract } from "./support.js";
 
 test("lightweight defaults prohibit extra model calls and repeated correction", () => {
   assert.equal(DEFAULT_INTERVENTION_BUDGET.extraLlmCalls, 0);

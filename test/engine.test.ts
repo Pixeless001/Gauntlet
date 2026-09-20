@@ -28,6 +28,23 @@ test("engine executes a task lifecycle against its task-start baseline", async (
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("clarification answers remain separate from the original request", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-clarification-"));
+  try {
+    const engine = new GauntletEngine(cwd), request = "Use the appropriate behavior";
+    const started = await engine.start(request, "clarify"); assert.ok(started.clarification);
+    const state = await engine.clarify("clarify", started.clarification!, "Keep the public response unchanged");
+    assert.equal(state.contract.intent, request); assert.equal(state.clarifications.length, 1); assert.equal(state.clarifications[0]?.answer, "Keep the public response unchanged");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("planning is requested only for distributed or systemic impact", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-planning-"));
+  try {
+    const engine = new GauntletEngine(cwd); assert.equal((await engine.start("Change source.ts", "local-plan")).directive.action, "continue"); assert.equal((await engine.start("Integrate cross-package behavior", "broad-plan")).directive.action, "plan");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("repeated finish is idempotent", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-finish-"));
   try {
@@ -51,8 +68,17 @@ test("engine tracks repeated unchanged reads and invalidates on writes", async (
   try {
     await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "observations");
     await engine.activity("observations", { kind: "file_read", target: "source.ts", outcome: "pass", outputBytes: 10 }); await engine.activity("observations", { kind: "file_read", target: "source.ts", outcome: "pass", outputBytes: 10 });
-    let state = (await engine.activity("observations", { kind: "message", outputBytes: 0 })).state; assert.equal(state.session?.repeatReadsDetected, 1); assert.equal(state.session?.observations.length, 1);
-    state = (await engine.activity("observations", { kind: "file_write", target: "source.ts", outcome: "pass", outputBytes: 0 })).state; assert.equal(state.session?.observations.length, 0);
+    let state = (await engine.activity("observations", { kind: "message", outputBytes: 0 })).state; assert.equal(state.control?.repeatReadsDetected, 1); assert.equal(state.control?.observations.length, 1);
+    state = (await engine.activity("observations", { kind: "file_write", target: "source.ts", outcome: "pass", outputBytes: 0 })).state; assert.equal(state.control?.observations.length, 0);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("hard edit violations return an immediate validation directive", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-edit-rule-"));
+  try {
+    await writeFile(join(cwd, "feature.test.ts"), "assert.equal(value, 1);\n"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.test.ts", "edit-rule"); await writeFile(join(cwd, "feature.test.ts"), "assert.ok(value);\n");
+    const result = await engine.activity("edit-rule", { kind: "file_write", target: "feature.test.ts", outcome: "pass", outputBytes: 0 });
+    assert.equal(result.directive.action, "validate"); assert.equal(result.state.findings.some((item) => item.code === "assertion-weakened" && item.blocking), true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -63,8 +89,9 @@ test("engine activates investigation after a repeated unresolved failure", async
     await engine.start("Implement behavior in source.ts", "transition");
     await engine.activity("transition", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
     const result = await engine.activity("transition", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
-    assert.deepEqual(result.state.session?.activeSkills, ["investigate"]);
-    assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "repeated_failure");
+    assert.deepEqual(result.state.control?.activeSkills, ["investigate"]);
+    assert.equal(result.state.control?.traces?.at(-1)?.trigger, "repeated_failure");
+    assert.equal(result.state.control.execution.checkpoints.some((item) => item.status === "rejected"), true);
     assert.equal(result.continuation?.workflow, "investigate"); assert.match(result.continuation?.guidance ?? "", /# INVESTIGATE/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
@@ -75,10 +102,10 @@ test("validated cause resumes implementation on the active execution path", asyn
     await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Fix race in source.ts", "cause");
     await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 }); await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 });
     const result = await engine.activity("cause", { kind: "decision_signal", target: "cause: missing request coalescing", outcome: "pass", outputBytes: 0, proofRef: "test:race" });
-    assert.deepEqual(result.state.session?.activeSkills, ["implement"]); assert.equal(result.state.session?.uncertainty?.cause, "resolved");
-    assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "cause_validated"); assert.deepEqual(result.state.session?.selectionTraces?.at(-1)?.selected, ["skill:implement"]);
+    assert.deepEqual(result.state.control?.activeSkills, ["implement"]); assert.equal(result.state.control?.uncertainty?.cause, "resolved");
+    assert.equal(result.state.control?.traces?.at(-1)?.trigger, "cause_validated"); assert.deepEqual(result.state.control?.traces?.at(-1)?.selected, ["skill:implement"]);
     assert.equal(result.continuation?.workflow, "implement"); assert.match(result.continuation?.guidance ?? "", /# IMPLEMENT/);
-    assert.equal(result.state.session?.execution?.checkpoints.at(-1)?.kind, "implementation"); assert.equal(result.state.session?.execution?.events.at(-1)?.proofRef, "test:race");
+    assert.equal(result.state.control?.execution?.checkpoints.at(-1)?.kind, "implementation"); assert.equal(result.state.control?.execution?.events.at(-1)?.proofRef, "test:race");
     const resumed = await engine.start("ignored", "cause"); assert.match(resumed.injection, /Current: missing request coalescing/); assert.match(resumed.injection, /Proof: test:race/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
@@ -88,7 +115,7 @@ test("structured state reports populate execution checkpoints", async () => {
   try {
     await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Fix race in source.ts", "report");
     const result = await engine.activity("report", { kind: "decision_signal", outcome: "pass", outputBytes: 0, report: { kind: "cause_validated", summary: "missing coalescing", constraints: ["preserve cancellation"], relevantFiles: ["source.ts"], relevantSymbols: ["value"], proofRefs: ["test:race"] } });
-    const checkpoint = result.state.session?.execution?.checkpoints.at(-1);
+    const checkpoint = result.state.control?.execution?.checkpoints.at(-1);
     assert.equal(checkpoint?.summary, "missing coalescing"); assert.deepEqual(checkpoint?.constraints, ["preserve cancellation"]); assert.deepEqual(checkpoint?.relevantFiles, ["source.ts"]); assert.deepEqual(checkpoint?.proofRefs, ["test:race"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
@@ -99,7 +126,7 @@ test("workflow transitions do not consume the compaction budget", async () => {
     await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "budget");
     await engine.activity("budget", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
     const transitioned = await engine.activity("budget", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 10 });
-    assert.equal(transitioned.continuation?.workflow, "investigate"); assert.equal((await engine.state("budget")).session?.compactions, 0);
+    assert.equal(transitioned.continuation?.workflow, "investigate"); assert.equal((await engine.state("budget")).control?.compactions, 0);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -110,10 +137,10 @@ test("execution signals update workflow and risk uncertainty", async () => {
     await engine.activity("signals", { kind: "file_write", target: "src/migrations/access.ts", outcome: "pass", outputBytes: 0 });
     await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 }); await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
     const result = await engine.activity("signals", { kind: "file_write", target: "component.tsx", outcome: "pass", outputBytes: 0 });
-    assert.equal(result.state.session?.uncertainty?.visual, "irrelevant"); assert.equal(result.state.session?.uncertainty?.repoFit, "open"); assert.equal(result.state.session?.uncertainty?.regression, "open");
-    assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "repeated_rewrite"); assert.deepEqual(result.state.session?.activeSkills, ["investigate"]);
+    assert.equal(result.state.control?.uncertainty?.visual, "irrelevant"); assert.equal(result.state.control?.uncertainty?.repoFit, "open"); assert.equal(result.state.control?.uncertainty?.regression, "open");
+    assert.equal(result.state.control?.traces?.at(-1)?.trigger, "repeated_rewrite"); assert.deepEqual(result.state.control?.activeSkills, ["investigate"]);
     const tested = await engine.activity("signals", { kind: "test_result", target: "component.test.tsx", outcome: "pass", outputBytes: 0 });
-    assert.equal(tested.state.session?.uncertainty?.behavior, "resolved"); assert.equal(tested.state.session?.uncertainty?.regression, "open");
+    assert.equal(tested.state.control?.uncertainty?.behavior, "resolved"); assert.equal(tested.state.control?.uncertainty?.regression, "open");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -130,15 +157,15 @@ test("elevated new tests reject weak counterfactual proof when a provider is ava
 });
 
 test("successful completion records a validated verification checkpoint", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-verification-state-")); try { await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"", test: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.ts", "verified"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("verified"); const resumed = await engine.start("", "verified"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.kind, "verification"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.status, "validated"); assert.equal(resumed.state.session?.uncertainty?.scope, "resolved"); } finally { await rm(cwd, { recursive: true, force: true }); }
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-verification-state-")); try { await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"", test: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.ts", "verified"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("verified"); const resumed = await engine.start("", "verified"); assert.equal(resumed.state.control?.execution?.checkpoints.at(-1)?.kind, "verification"); assert.equal(resumed.state.control?.execution?.checkpoints.at(-1)?.status, "validated"); assert.equal(resumed.state.control?.uncertainty?.scope, "resolved"); } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("static checks do not claim behavioral proof or block on an absent provider", async () => {
+test("static checks do not claim behavioral proof or false completion", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-static-proof-"));
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
     const engine = new GauntletEngine(cwd); await engine.start("Change runtime behavior", "static"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); const result = await engine.finish("static");
-    const state = await engine.state("static"); assert.equal(state.session?.uncertainty?.scope, "resolved"); assert.equal(state.session?.uncertainty?.behavior, "open"); assert.equal(result.clean, true); assert.equal(result.findings.some((finding) => finding.includes("behavior remains unresolved")), false);
+    const state = await engine.state("static"); assert.equal(state.control?.uncertainty?.scope, "open"); assert.equal(state.control?.uncertainty?.behavior, "open"); assert.equal(result.completion, "incomplete"); assert.equal(result.clean, false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -159,6 +186,6 @@ test("detected domains stay inactive when no reference provider is available", a
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { react: "19.0.0" } })); await writeFile(join(cwd, "component.tsx"), "export const Component = () => null;\n");
     const result = await new GauntletEngine(cwd).start("Improve React render performance in component.tsx", "domain");
-    const trace = result.state.session?.selectionTraces?.[0]; assert.ok(trace?.candidates.includes("reference:react")); assert.equal(trace?.rejected.find((item) => item.id === "reference:react")?.reason, "unavailable");
+    const trace = result.state.control?.traces?.[0]; assert.ok(trace?.candidates.includes("reference:react")); assert.equal(trace?.rejected.find((item) => item.id === "reference:react")?.reason, "unavailable");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

@@ -5,23 +5,24 @@ import { planActivation } from "../src/control/selector.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
 import { compareEval, eligibleForPromotion, silenceResult } from "../src/measure/evals.js";
+import { contract } from "./support.js";
 
 const profile = { packageManager: "npm", language: ["typescript"], dependencies: ["react"], commands: [], harnesses: [] };
 test("detected domains remain inactive for unrelated work", () => {
-  assert.deepEqual(resolveDomains(profile, { intent: "fix README typo", acceptanceCriteria: [], constraints: [], explicitPaths: [] }), { detected: ["react", "ui"], active: [] });
-  assert.deepEqual(resolveDomains(profile, { intent: "improve React render performance", acceptanceCriteria: [], constraints: [], explicitPaths: [] }).active, ["react"]);
+  assert.deepEqual(resolveDomains(profile, contract("fix README typo")), { detected: ["react", "ui"], active: [] });
+  assert.deepEqual(resolveDomains(profile, contract("improve React render performance")).active, ["react"]);
 });
 
 test("typescript alone does not pretend React or UI capability exists", () => {
   const plain = { ...profile, dependencies: [] };
-  assert.deepEqual(resolveDomains(plain, { intent: "change a component", acceptanceCriteria: [], constraints: [], explicitPaths: [] }), { detected: [], active: [] });
+  assert.deepEqual(resolveDomains(plain, contract("change a component")), { detected: [], active: [] });
 });
 
 test("domain detection proposes references without forcing activation", () => {
-  const contract = { intent: "improve React render performance", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, uncertainty = initialUncertainty(contract, "ordinary");
-  const unavailable = domainCandidates(profile, contract), rejected = planActivation({ uncertainty, candidates: unavailable, supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 0, trigger: "test" });
+  const taskContract = contract("improve React render performance"), uncertainty = initialUncertainty(taskContract, "ordinary");
+  const unavailable = domainCandidates(profile, taskContract), rejected = planActivation({ uncertainty, candidates: unavailable, supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 0, trigger: "test" });
   assert.deepEqual(rejected.references, []); assert.ok(rejected.trace.rejected.every((item) => item.reason === "unavailable" || item.reason === "irrelevant"));
-  const selected = planActivation({ uncertainty, candidates: domainCandidates(profile, contract, { react: true }), supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 0, trigger: "test" });
+  const selected = planActivation({ uncertainty, candidates: domainCandidates(profile, taskContract, { react: true }), supplied: [], budget: DEFAULT_INTERVENTION_BUDGET, used: 0, event: 0, trigger: "test" });
   assert.deepEqual(selected.references.map((item) => item.id), ["reference:react"]);
 });
 

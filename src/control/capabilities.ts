@@ -6,11 +6,12 @@ import type { InterventionCandidate } from "./selector.js";
 export interface CapabilityActivation { kind: CapabilityKind; uncertainty: UncertaintyKind; reason: string }
 
 export function requiredCapabilities(state: TaskState): CapabilityActivation[] {
-  const uncertainty = state.session?.uncertainty; if (!uncertainty) return [];
+  const uncertainty = state.control?.uncertainty; if (!uncertainty) return [];
   const activations: CapabilityActivation[] = [];
-  if (uncertainty.api === "open" && (state.session?.exhaustedEscalation?.api ?? 0) >= 3) activations.push({ kind: "docs", uncertainty: "api", reason: "Local package proof was insufficient" });
+  if (uncertainty.api === "open" && (state.control?.exhaustedEscalation?.api ?? 0) >= 3) activations.push({ kind: "docs", uncertainty: "api", reason: "Local package proof was insufficient" });
   if (uncertainty.visual === "open") activations.push({ kind: "browser", uncertainty: "visual", reason: "Rendered acceptance remains unverified" });
-  if ((state.session?.interventionsUsed ?? 0) < state.session!.budget.interventions && state.attempts > 2 && uncertainty.cause === "open" && (state.session?.exhaustedEscalation?.cause ?? 0) >= 4) activations.push({ kind: "delegation", uncertainty: "cause", reason: "Repeated high-risk work remains unresolved" });
+  const boundedDelegation = state.contract.size !== "systemic" && state.control.scope.expected.length > 1 && state.control.scope.hardSignals.length === 0 && state.control.impact.packageCrossings.length === 0;
+  if (boundedDelegation && state.control.interventionsUsed < state.control.budget.interventions && state.attempts > 2 && uncertainty.cause === "open" && (state.control.exhaustedEscalation.cause ?? 0) >= 4) activations.push({ kind: "delegation", uncertainty: "cause", reason: "Independent bounded work has measurable parallel value after local paths were exhausted" });
   return activations;
 }
 

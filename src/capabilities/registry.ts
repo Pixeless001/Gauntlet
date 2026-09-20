@@ -6,4 +6,5 @@ export class CapabilityRegistry {
   private readonly entries = new Map<CapabilityKind, Capability[]>();
   register<T>(capability: Capability<T>): void { const values = this.entries.get(capability.kind) ?? []; this.entries.set(capability.kind, [...values.filter((item) => item.id !== capability.id), capability]); }
   candidates<T>(kind: CapabilityKind): Capability<T>[] { return (this.entries.get(kind) ?? []) as Capability<T>[]; }
+  all(): Capability[] { return [...this.entries.values()].flat(); }
 }

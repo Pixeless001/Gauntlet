@@ -12,10 +12,10 @@ async function fingerprint(cwd: string, paths: string[]): Promise<string> {
 }
 
 export async function deriveFacts(cwd: string, profile: RepoProfile): Promise<RepositoryFact[]> {
-  const sources = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json"];
-  const digest = await fingerprint(cwd, sources);
+  const sourceFiles = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json"];
+  const digest = await fingerprint(cwd, sourceFiles);
   const facts: RepositoryFact[] = [];
-  if (profile.packageManager) facts.push({ key: "package-manager", value: profile.packageManager, proof: sources.filter((path) => path.includes(profile.packageManager!) || path === "package.json"), fingerprint: digest });
+  if (profile.packageManager) facts.push({ key: "package-manager", value: profile.packageManager, proof: sourceFiles.filter((path) => path.includes(profile.packageManager!) || path === "package.json"), fingerprint: digest });
   for (const command of profile.commands) facts.push({ key: `tool:${command.name}`, value: [command.command, ...command.args].join(" "), proof: ["package.json"], fingerprint: digest });
   return facts;
 }

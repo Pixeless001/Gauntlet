@@ -4,6 +4,7 @@ import { adapter } from "../adapters/install.js";
 import { GauntletEngine } from "../core/engine.js";
 import { formatSummary } from "../reporting/summary.js";
 import { correctionPacket } from "../verify/correction.js";
+import { ArtifactStore } from "../output/store.js";
 
 type NativeEvent = Record<string, unknown>;
 
@@ -31,8 +32,22 @@ function stopOutput(harness: HarnessName, summary: string, acceptable: boolean, 
   return harness === "cursor" ? {} : { systemMessage: summary };
 }
 
+function lifecycleOutput(harness: HarnessName, continuation: unknown): NativeEvent {
+  const context = JSON.stringify(continuation);
+  return harness === "cursor" ? { additional_context: context } : { hookSpecificOutput: { hookEventName: "PreCompact", additionalContext: context } };
+}
+
+async function activityOutput(harness: HarnessName, name: string, repository: string, state: Awaited<ReturnType<GauntletEngine["activity"]>>): Promise<NativeEvent> {
+  const latest = state.state.activities.at(-1), context = state.continuation ? JSON.stringify(state.continuation) : undefined;
+  if (!latest?.artifactRef) return context ? harness === "cursor" ? { additional_context: context } : { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } } : {};
+  const store = new ArtifactStore(repository), metadata = await store.metadata(latest.artifactRef), conditioned = await store.read(latest.artifactRef, { detail: "concise" });
+  if (harness === "claude-code") return { hookSpecificOutput: { hookEventName: name, updatedToolOutput: conditioned, ...(context ? { additionalContext: context } : {}) } };
+  if (harness === "cursor" && /mcp/i.test(metadata.operation)) return { updated_mcp_tool_output: conditioned, ...(context ? { additional_context: context } : {}) };
+  return context || harness === "codex" ? { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: [conditioned, context].filter(Boolean).join("\n\n") } } : {};
+}
+
 export async function dispatchHook(harness: HarnessName, input: NativeEvent, nativeEvent?: string): Promise<NativeEvent> {
-  const name = nativeEvent ?? eventName(input), event = adapter(harness).translate(input, name), engine = new GauntletEngine(event.repository), id = event.taskId;
+  const name = nativeEvent ?? eventName(input), event = adapter(harness).translate(input, name), engine = new GauntletEngine(event.repository, { harness }), id = event.taskId;
   if (event.type === "task_start") {
     const result = await engine.start(event.intent, id);
     return startOutput(harness, name, id, result.injection, result.clarification);
@@ -40,13 +55,15 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   if (event.type === "task_activity") {
     if (!await existsTask(engine, id)) return {};
     const activity = await engine.activity(id, event.activity);
-    const additional = activity.continuation ? JSON.stringify(activity.continuation) : undefined;
-    if (!additional) return {};
-    return harness === "cursor" ? { additional_context: additional } : { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: additional } };
+    return activityOutput(harness, name, event.repository, activity);
+  }
+  if (event.type === "lifecycle") {
+    if (!await existsTask(engine, id)) return {};
+    return lifecycleOutput(harness, (await engine.lifecycle(id, event.phase)).continuation);
   }
   if (event.type === "before_stop") {
     if (!await existsTask(engine, id)) return {};
-    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.clean && result.verified;
+    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.completion === "complete";
     const alreadyContinued = result.attempts > 1;
     if (!acceptable && !alreadyContinued) await engine.retry(id);
     return stopOutput(harness, summary, acceptable, alreadyContinued);

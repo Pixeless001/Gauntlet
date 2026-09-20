@@ -1,6 +1,11 @@
 import type { EvalComparison } from "../measure/evals.js";
 import { eligibleForPromotion } from "../measure/evals.js";
 import type { ExperiencePattern, PatternKind } from "./patterns.js";
+import { PatternStore } from "./patterns.js";
+import { runEvalSuite } from "../measure/eval-runner.js";
+import { compareEval } from "../measure/evals.js";
+import { mkdir, rename, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export interface BehaviorProposal { id: string; kind: PatternKind; patternId: string; summary: string; evaluationCases: string[] }
 export interface EvolutionDecision { retainBehavior: boolean; pattern: ExperiencePattern; reason: string }
@@ -15,4 +20,17 @@ export function evaluateProposal(pattern: ExperiencePattern, proposal: BehaviorP
   if (proposal.patternId !== pattern.id) throw new Error("Proposal does not match its proof pattern");
   const retainBehavior = eligibleForPromotion(results), now = new Date().toISOString();
   return { retainBehavior, reason: retainBehavior ? "Evaluation improved without regressions" : "Evaluation did not earn behavior promotion", pattern: { ...pattern, status: retainBehavior ? "promoted" : "supported", updatedAt: now } };
+}
+
+export async function runEvolution(cwd: string, dryRun = false): Promise<{ status: "no-proposal" | "promoted" | "rejected" | "dry-run"; proposal?: BehaviorProposal; path?: string }> {
+  const store = new PatternStore(cwd), patterns = await store.list(), proposal = proposeAtomicChange(patterns);
+  if (!proposal) return { status: "no-proposal" };
+  const pattern = patterns.find((item) => item.id === proposal.patternId)!;
+  const representative = await runEvalSuite("decisions"), comparisons = representative.map((item) => compareEval(item, item)), decision = evaluateProposal(pattern, proposal, comparisons);
+  if (dryRun) return { status: "dry-run", proposal };
+  const directory = join(cwd, ".gauntlet", "evolution"), name = `${new Date().toISOString().replaceAll(":", "-")}-${proposal.patternId}.json`, path = join(directory, name), temporary = `${path}.${process.pid}.tmp`;
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(temporary, JSON.stringify({ version: 1, proposal, decision, cases: comparisons.map((item) => ({ caseId: item.caseId, improved: item.cleanFirstPassImproved, overheadMs: item.overheadMs })) }, null, 2), { mode: 0o600 }); await rename(temporary, path);
+  if (decision.retainBehavior) await store.put(decision.pattern);
+  return { status: decision.retainBehavior ? "promoted" : "rejected", proposal, path };
 }

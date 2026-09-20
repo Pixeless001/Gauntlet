@@ -4,7 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildStructuralIndex, updateStructuralIndex } from "../src/intelligence/index.js";
-import { ensureDepth, graphExpansionCandidate, impact, workingGraph } from "../src/intelligence/working-graph.js";
+import { ensureDepth, graphExpansionCandidate, impact, inspectImpact, workingGraph } from "../src/intelligence/working-graph.js";
+import { assessScope } from "../src/intelligence/scope.js";
+import { contract } from "./support.js";
 import { selectMarginal } from "../src/context/marginality.js";
 import type { RepoIndex } from "../src/repo/index.js";
 
@@ -16,9 +18,20 @@ test("structural intelligence finds imports, dependents, exports, symbols, and t
     const index = await buildStructuralIndex(cwd, repository), cone = impact(index, "owner.ts");
     assert.deepEqual(index.dependents["owner.ts"], ["caller.ts"]); assert.deepEqual(index.files["owner.ts"]?.symbols, ["Contract", "Owner", "owner"]); assert.deepEqual(index.files["owner.ts"]?.extends, ["Base"]); assert.deepEqual(index.files["owner.ts"]?.implements, ["Contract"]); assert.ok(index.files["caller.ts"]?.calls?.includes("owner"));
     assert.equal(cone.publicSurface, true); assert.equal(cone.confidence, "high"); assert.deepEqual(cone.transitiveDependents, ["caller.ts", "feature.ts"]); assert.deepEqual(cone.affectedTests, ["owner.test.ts"]); assert.deepEqual(cone.packageCrossings, []);
+    assert.deepEqual(inspectImpact(index, "owner.ts"), { target: "owner.ts", owner: ".", dependencies: [], callers: ["caller.ts", "feature.ts"], tests: ["owner.test.ts"], packageCrossings: [], publicSurface: true, confidence: "high", truncated: false });
     assert.deepEqual(workingGraph(index, ["owner.ts"]).map((item) => item.path), ["owner.ts", "caller.ts", "owner.test.ts", "feature.ts"]);
     const expanded = ensureDepth(index, ["owner.ts"], "relation"); assert.ok(expanded.symbols.includes("owner")); assert.ok(expanded.relations.some((edge) => edge.kind === "dependent" && edge.to === "caller.ts"));
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("scope accepts broad requested work and rejects material unrequested expansion", () => {
+  const index = { version: 1 as const, head: null, files: { "public.ts": { path: "public.ts", packageRoot: ".", imports: [], exports: ["api"], symbols: ["api"], tests: [] } }, dependents: {} };
+  const local = assessScope(contract("Change internal behavior"), [{ path: "public.ts", added: 2, removed: 0 }], [], ["new-package"], index);
+  assert.ok(local.hardSignals.some((item) => item.startsWith("unrequested dependency"))); assert.ok(local.hardSignals.some((item) => item.startsWith("unexpected public surface")));
+  const broad = assessScope(contract("Perform a repository-wide migration"), [{ path: "public.ts", added: 2, removed: 0 }], [], [], index);
+  assert.deepEqual(broad.hardSignals, []);
+  const drift = assessScope(contract("Change module implementation", { explicitPaths: ["public.ts"], expectedFrontier: ["public.ts"] }), [{ path: "public.ts", added: 1, removed: 0 }], [], [], index, { "public.ts": [] });
+  assert.ok(drift.hardSignals.some((item) => item.startsWith("unrequested public exports")));
 });
 
 test("structural intelligence incrementally replaces changed files and removes deleted files", async () => {

@@ -20,12 +20,15 @@ test("adapters publish individually testable capabilities", () => {
   assert.equal(codexAdapter.capabilities.lifecycle.failure, false);
   assert.equal(cursorAdapter.capabilities.lifecycle.beforeStop, true);
   assert.equal(codexAdapter.capabilities.delegation.supported, false);
+  assert.deepEqual([claudeCodeAdapter.capabilities.output.replacement, codexAdapter.capabilities.output.replacement, cursorAdapter.capabilities.output.replacement], ["general", "feedback", "mcp"]);
+  assert.equal(codexAdapter.capabilities.output.preventsInitialContextCost, false);
+  assert.ok([claudeCodeAdapter, codexAdapter, cursorAdapter].every((item) => item.capabilities.compaction.hooks));
 });
 
 test("adapter records semantic file and command activity", () => {
   const read = codexAdapter.translate({ hook_event_name: "PostToolUse", session_id: "1", cwd: "/repo", tool_name: "Read", tool_input: { file_path: "/repo/src/a.ts" } });
   const shell = codexAdapter.translate({ hook_event_name: "PostToolUse", session_id: "1", cwd: "/repo", tool_name: "Shell", tool_input: { command: "npm   test -- auth" } });
-  assert.equal(read.type, "task_activity"); if (read.type === "task_activity") assert.deepEqual(read.activity, { kind: "file_read", target: "src/a.ts", outcome: "pass", outputBytes: 2 });
+  assert.equal(read.type, "task_activity"); if (read.type === "task_activity") { assert.equal(read.activity.kind, "file_read"); assert.equal(read.activity.target, "src/a.ts"); assert.equal(read.activity.toolPayload?.processor, "code"); assert.deepEqual(read.activity.toolPayload?.paths, ["src/a.ts"]); }
   assert.equal(shell.type, "task_activity"); if (shell.type === "task_activity") assert.equal(shell.activity.target, "npm test -- auth");
 });
 

@@ -37,6 +37,28 @@ test("Cursor task id remains stable across environments", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("host adapters condition results only through declared replacement paths", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-replacement-hook-")), identity = { session_id: "replacement", cwd };
+  try {
+    await dispatchHook("claude-code", { ...identity, prompt: "Change task.ts" }, "UserPromptSubmit");
+    const general = await dispatchHook("claude-code", { ...identity, tool_name: "Shell", tool_input: { command: "npm test" }, tool_response: { stdout: "noise\nFAIL case\nExpected one received two", exit_code: 1 } }, "PostToolUse");
+    assert.match(String((general.hookSpecificOutput as Record<string, unknown>).updatedToolOutput), /FAIL case/);
+    const mcp = await dispatchHook("cursor", { ...identity, tool_name: "mcp__browser", tool_response: { result: "button Save" } }, "postToolUse");
+    assert.match(String(mcp.updated_mcp_tool_output), /button Save/);
+    const feedback = await dispatchHook("codex", { ...identity, tool_name: "Shell", tool_response: { stdout: "done", exit_code: 0 } }, "PostToolUse");
+    assert.match(String((feedback.hookSpecificOutput as Record<string, unknown>).additionalContext), /passed/);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("compact lifecycle returns a bounded re-grounding record", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-compact-hook-")), identity = { session_id: "compact", cwd };
+  try {
+    await dispatchHook("claude-code", { ...identity, prompt: "Change task.ts" }, "UserPromptSubmit");
+    const output = await dispatchHook("claude-code", identity, "PreCompact"), context = JSON.parse(String((output.hookSpecificOutput as Record<string, unknown>).additionalContext));
+    assert.equal(context.task, "Change task.ts"); assert.ok(Array.isArray(context.artifactRefs));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("subsequent prompts preserve the task-start baseline", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-lifecycle-hook-"));
   try {
@@ -64,7 +86,7 @@ test("Gauntlet permits at most one correction without trusting native counters",
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.test.ts"), "test('x', () => 1);\n");
     const identity = { hook_event_name: "UserPromptSubmit", session_id: "correction", cwd, prompt: "Change tests" }; await dispatchHook("claude-code", identity); await unlink(join(cwd, "task.test.ts"));
     assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd })).decision, "block");
-    const second = await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd }); assert.equal(second.decision, undefined); assert.match(String(second.systemMessage), /CLEAN/);
+    const second = await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd }); assert.equal(second.decision, undefined); assert.match(String(second.systemMessage), /INCOMPLETE/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

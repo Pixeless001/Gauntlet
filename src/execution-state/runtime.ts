@@ -8,7 +8,7 @@ import { hasSufficientProof, type ProofKind } from "../verify/proof-selector.js"
 import { assessProgress, type ProgressStatus } from "./progress.js";
 
 export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite" | "regressed"; causeValidated: boolean; progress?: ProgressStatus } {
-  const execution = state.session?.execution;
+  const execution = state.control?.execution;
   if (!execution) return { investigate: false, causeValidated: false };
   if (activity.kind === "message") return { investigate: false, causeValidated: false };
   const type: ExecutionEventType = activity.kind === "command" && activity.outcome === "fail" ? "failure" : activity.kind;
@@ -20,11 +20,13 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
   const causeValidated = activity.report?.kind === "cause_validated" || activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
   const approachRejected = activity.report?.kind === "approach_rejected" || activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
   updateUncertainty(state, activity);
-  const progress = assessProgress({ events: execution.events, checkpoints: execution.checkpoints, activeCheckpointId: execution.activeCheckpointId, uncertainty: state.session!.uncertainty! });
+  const progress = assessProgress({ events: execution.events, checkpoints: execution.checkpoints, activeCheckpointId: execution.activeCheckpointId, uncertainty: state.control.uncertainty, previousUnresolved: state.control.progress.unresolved });
+  state.control.progress = { status: progress.status, reason: progress.reason, unresolved: progress.unresolved, proofDelta: progress.proofDelta, ...(progress.failureSignature ? { failureSignature: progress.failureSignature } : {}), repeatedTargets: progress.repeatedTargets, diffLines: state.control.progress.diffLines + progress.diffGrowth, rejectedOverlap: progress.rejectedOverlap };
   const investigate = progress.status !== "PROGRESS";
   const trigger = progress.status === "REGRESSED" ? "regressed" as const : repeatedFailure ? "repeated_failure" as const : repeatedRewrite ? "repeated_rewrite" as const : undefined;
   if (investigate && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
-    activate(execution, checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1));
+    const next = checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1);
+    execution.checkpoints = rejectBranch(execution.checkpoints, execution.activeCheckpointId, next, progress.reason); execution.activeCheckpointId = next.id;
   }
   if (causeValidated) {
     const current = active(execution.checkpoints, execution.activeCheckpointId); if (current) { current.status = "validated"; current.resolves = ["cause"]; current.proofRefs = [...new Set([...current.proofRefs, ...(activity.report?.proofRefs ?? []), ...(activity.proofRef ? [activity.proofRef] : [])])]; applyReport(current, activity); }
@@ -48,28 +50,27 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
 }
 
 function updateUncertainty(state: TaskState, activity: TaskActivity): void {
-  const uncertainty = state.session?.uncertainty, target = activity.target?.toLowerCase() ?? ""; if (!uncertainty) return;
+  const uncertainty = state.control?.uncertainty, target = activity.target?.toLowerCase() ?? ""; if (!uncertainty) return;
   if (activity.kind === "file_write") {
     if (uncertainty.visual !== "irrelevant" && /\.(?:css|scss|sass|less|tsx|jsx|html)$/.test(target)) uncertainty.visual = "open";
     if (/(?:^|\/)(?:migrations?|schema|auth|security|permissions?)(?:\/|\.|$)/.test(target)) { uncertainty.repoFit = "open"; uncertainty.regression = "open"; }
     if (/(?:^|\/)(?:index\.[cm]?[jt]s|package\.json)$/.test(target)) uncertainty.regression = "open";
-    uncertainty.scope = "open";
   }
   if (activity.kind === "test_result" && activity.outcome === "pass") uncertainty.behavior = uncertainty.behavior === "irrelevant" ? "irrelevant" : "resolved";
   if ((activity.kind === "test_result" || activity.kind === "decision_signal") && activity.outcome === "pass" && /(?:profile|benchmark|performance|latency|throughput)/.test(target)) uncertainty.performance = uncertainty.performance === "irrelevant" ? "irrelevant" : "resolved";
 }
 
 export function recordVerification(state: TaskState, passed: boolean, proofRefs: string[], supplied: ProofKind[] = []): void {
-  const session = state.session, execution = session?.execution; if (!session || !execution) return;
+  const control = state.control, execution = control.execution;
   const status = passed ? "validated" : "rejected", summary = passed ? "Required machine proof passed" : "Required machine proof failed";
   const current = active(execution.checkpoints, execution.activeCheckpointId), parentId = current?.kind === "verification" ? current.parentId : execution.activeCheckpointId;
   const existing = current?.kind === "verification" ? current : execution.checkpoints.find((item) => item.kind === "verification" && item.parentId === parentId && item.status === status);
   if (existing) { existing.status = status; existing.summary = summary; existing.proofRefs = [...new Set(proofRefs)]; if (passed) execution.activeCheckpointId = existing.id; else if (existing.parentId) execution.activeCheckpointId = existing.parentId; }
   else { const next = checkpoint("verification", summary, parentId ?? execution.activeCheckpointId, execution.nextEvent); next.status = status; next.proofRefs = [...new Set(proofRefs)]; execution.checkpoints.push(next); if (passed) execution.activeCheckpointId = next.id; }
-  if (passed && session.uncertainty) {
+  if (passed) {
     const available = new Set(supplied);
-    for (const kind of Object.keys(session.uncertainty) as (keyof typeof session.uncertainty)[]) {
-      if (session.uncertainty[kind] !== "irrelevant" && hasSufficientProof(kind, available)) session.uncertainty[kind] = "resolved";
+    for (const kind of Object.keys(control.uncertainty) as UncertaintyKey[]) {
+      if (control.uncertainty[kind] !== "irrelevant" && hasSufficientProof(kind, available)) control.uncertainty[kind] = "resolved";
     }
   }
 }
@@ -84,7 +85,8 @@ function applyReport(target: ExecutionCheckpoint, activity: TaskActivity): void 
   if (report.kind === "hypothesis" || report.kind === "implementation_selected") target.decisions = [...new Set([...target.decisions, report.summary])];
 }
 function active(checkpoints: ExecutionCheckpoint[], id: string): ExecutionCheckpoint | undefined { return checkpoints.find((item) => item.id === id); }
-function activate(execution: NonNullable<NonNullable<TaskState["session"]>["execution"]>, next: ExecutionCheckpoint): void {
+type UncertaintyKey = keyof TaskState["control"]["uncertainty"];
+function activate(execution: TaskState["control"]["execution"], next: ExecutionCheckpoint): void {
   const current = active(execution.checkpoints, execution.activeCheckpointId);
   if (current?.status === "active") current.status = "validated";
   execution.checkpoints.push(next); execution.activeCheckpointId = next.id;

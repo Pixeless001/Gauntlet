@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { initialUncertainty } from "../src/control/uncertainty.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
 import { remainingProof } from "../src/verify/proof-selector.js";
+import { contract } from "./support.js";
 
 test("verification uses declared tools and stops without changes", () => {
   const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], commands: [{ name: "typecheck", command: "npm", args: ["run", "typecheck"] }, { name: "test", command: "npm", args: ["test"] }] };
@@ -19,13 +20,13 @@ test("verification uses declared tools and stops without changes", () => {
 
 test("verification proof is selected by the shared control plane", () => {
   const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], commands: [{ name: "typecheck", command: "npm", args: ["run", "typecheck"] }, { name: "lint", command: "npm", args: ["run", "lint"] }, { name: "test", command: "npm", args: ["test"] }] };
-  const contract = { intent: "Change behavior in a.ts", acceptanceCriteria: [], explicitPaths: ["a.ts"], constraints: [] }, uncertainty = initialUncertainty(contract, "ordinary");
+  const taskContract = contract("Change behavior in a.ts", { explicitPaths: ["a.ts"], expectedFrontier: ["a.ts"] }), uncertainty = initialUncertainty(taskContract, "ordinary");
   const plan = selectVerification(profile, [{ path: "a.ts", added: 1, removed: 0 }], [], undefined, { uncertainty, budget: DEFAULT_INTERVENTION_BUDGET, event: 3 });
   assert.deepEqual(plan.checks.map((item) => item.id), ["lint", "repository-tests"]); assert.equal(plan.selectionTrace?.trigger, "before_stop"); assert.equal(plan.selectionTrace?.rejected.find((item) => item.id === "proof:typecheck")?.reason, "dominated");
 });
 
 test("completion does not demand proof from an unavailable provider", () => {
-  const uncertainty = initialUncertainty({ intent: "Implement a visual modal", acceptanceCriteria: [], explicitPaths: ["modal.tsx"], constraints: [] }, "ordinary");
+  const uncertainty = initialUncertainty(contract("Implement a visual modal", { explicitPaths: ["modal.tsx"], expectedFrontier: ["modal.tsx"] }), "ordinary");
   assert.equal(remainingProof(uncertainty, ["diff"], ["diff", "repository_rule", "test"]).some((item) => item.uncertainty === "visual"), false);
   assert.equal(remainingProof(uncertainty, ["diff"], ["diff", "repository_rule", "test", "browser"]).some((item) => item.uncertainty === "visual"), true);
 });

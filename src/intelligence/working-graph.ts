@@ -34,6 +34,12 @@ export function ensureDepth(index: StructuralIndex, seeds: string[], depth: Grap
 }
 
 export interface ImpactCone { target: string; directDependents: string[]; transitiveDependents: string[]; affectedTests: string[]; packageCrossings: string[]; publicSurface: boolean; confidence: "high" | "medium" | "low"; truncated: boolean }
+export interface ImpactInspection { target: string; owner: string | null; dependencies: string[]; callers: string[]; tests: string[]; packageCrossings: string[]; publicSurface: boolean; confidence: "high" | "medium" | "low"; truncated: boolean }
+
+export function inspectImpact(index: StructuralIndex, target: string, limit = 80): ImpactInspection {
+  const cone = impact(index, target, limit), file = index.files[target];
+  return { target, owner: file?.packageRoot ?? null, dependencies: file?.imports.slice(0, limit) ?? [], callers: cone.transitiveDependents, tests: cone.affectedTests, packageCrossings: cone.packageCrossings, publicSurface: cone.publicSurface, confidence: cone.confidence, truncated: cone.truncated };
+}
 export function impact(index: StructuralIndex, target: string, limit = 80): ImpactCone {
   const directDependents = (index.dependents[target] ?? []).slice(0, limit), queue = [...directDependents], seen = new Set<string>();
   while (queue.length && seen.size < limit) { const path = queue.shift()!; if (seen.has(path)) continue; seen.add(path); queue.push(...(index.dependents[path] ?? [])); }

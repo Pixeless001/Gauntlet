@@ -3,6 +3,7 @@ export interface EvalResult {
   category: EvalCategory; caseId: string; passed: boolean; durationMs: number; interventions: number; extraModelCalls: number;
   contextItems: number; repeatedReads: number; rawOutputBytes: number; conditionedOutputBytes: number; proof: string[];
   graphExpansions?: number; externalDocCalls?: number; browserActivations?: number; delegations?: number; checkpoints?: number; rejectedBranches?: number;
+  firstPassOutcome?: boolean; visibleBytes?: number; depth?: number; stateChanges?: number; proofYield?: number; capabilityUse?: number; checkpointQuality?: number;
 }
 export interface EvalComparison { caseId: string; baseline: EvalResult; candidate: EvalResult; cleanFirstPassImproved: boolean; overheadMs: number; contextItemsSaved: number }
 export interface SelectionQuality { falseActivationRate: number; missedActivationRate: number; duplicateInterventionRate: number; averageActivations: number; averageDepth: number; localRate: number; silentRate: number; stateChangeRate: number; proofYieldRate: number }
@@ -20,11 +21,11 @@ export function compareEval(baseline: EvalResult, candidate: EvalResult): EvalCo
   return { caseId: baseline.caseId, baseline, candidate, cleanFirstPassImproved: !baseline.passed && candidate.passed, overheadMs: candidate.durationMs - baseline.durationMs, contextItemsSaved: baseline.contextItems - candidate.contextItems };
 }
 
-export function eligibleForPromotion(results: EvalComparison[], maxFalseActivationRate = 0.05): boolean {
+export function eligibleForPromotion(results: EvalComparison[], maxFalseActivationRate = 0.05, maxOverheadMs = 250): boolean {
   if (results.length < 3) return false;
   const improved = results.filter((result) => result.cleanFirstPassImproved).length, regressions = results.filter((result) => result.baseline.passed && !result.candidate.passed).length;
   const falseActivations = results.filter((result) => result.candidate.interventions > 0 && result.candidate.category === "overhead").length;
-  return improved > 0 && regressions === 0 && falseActivations / results.length <= maxFalseActivationRate;
+  return improved > 0 && regressions === 0 && results.every((result) => result.overheadMs <= maxOverheadMs) && falseActivations / results.length <= maxFalseActivationRate;
 }
 
 export function selectionQuality(outcomes: InterventionOutcome[]): SelectionQuality {

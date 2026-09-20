@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { migrateLegacyKeys } from "../state/v1-migration.js";
 
 export type PatternStatus = "observed" | "supported" | "promoted";
 export type PatternKind = "skill" | "selector" | "repository-rule" | "proof-policy" | "context-policy" | "reference";
@@ -13,7 +14,11 @@ export class PatternStore {
   private readonly path: string;
   constructor(cwd: string) { this.path = join(cwd, ".gauntlet", "knowledge", "patterns.json"); }
   async list(): Promise<ExperiencePattern[]> {
-    try { const value = JSON.parse(await readFile(this.path, "utf8")) as { version?: number; patterns?: unknown[] }; return value.version === 1 && Array.isArray(value.patterns) ? value.patterns.filter(valid).slice(-MAX_PATTERNS) : []; }
+    try {
+      const raw = JSON.parse(await readFile(this.path, "utf8")), value = migrateLegacyKeys(raw) as { version?: number; patterns?: unknown[] }, patterns = value.version === 1 && Array.isArray(value.patterns) ? value.patterns.filter(valid).slice(-MAX_PATTERNS) : [];
+      if (JSON.stringify(raw) !== JSON.stringify(value)) { const directory = join(this.path, ".."); await mkdir(directory, { recursive: true, mode: 0o700 }); const temporary = `${this.path}.${process.pid}.tmp`; await writeFile(temporary, JSON.stringify({ version: 1, patterns }), { mode: 0o600 }); await rename(temporary, this.path); }
+      return patterns;
+    }
     catch { return []; }
   }
   async put(pattern: ExperiencePattern): Promise<void> {

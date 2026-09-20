@@ -7,12 +7,19 @@ import { resolvePackageKnowledge } from "../src/knowledge/resolver.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
 import { hasSufficientProof, remainingProof } from "../src/verify/proof-selector.js";
 import { correctionPacket } from "../src/verify/correction.js";
+import { contract } from "./support.js";
 
 test("package knowledge stops at installed types before external docs", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-knowledge-")); let external = 0;
   try { const root = join(cwd, "node_modules", "demo"); await mkdir(root, { recursive: true }); await writeFile(join(root, "package.json"), JSON.stringify({ version: "1.2.3", types: "index.d.ts" })); await writeFile(join(root, "index.d.ts"), "export function refresh(): void;\n");
     const fact = await resolvePackageKnowledge(cwd, "demo", "refresh", { externalDocs: async () => { external += 1; return "docs"; } }); assert.equal(fact?.source, "installed_types"); assert.equal(external, 0);
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("package knowledge prefers a version-bound cache before local resolution", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-knowledge-"));
+  try { const root = join(cwd, "node_modules", "demo"); await mkdir(root, { recursive: true }); await writeFile(join(root, "package.json"), JSON.stringify({ version: "1.2.3", types: "index.d.ts" })); await writeFile(join(root, "index.d.ts"), "export function refresh(): void;\n"); const fact = await resolvePackageKnowledge(cwd, "demo", "refresh", { cached: async () => "cache:refresh", repositoryUsage: async () => "usage.ts" }); assert.equal(fact?.source, "cache"); }
+  finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("package knowledge reads modern exports but rejects escaping metadata paths", async () => {
@@ -27,12 +34,12 @@ test("package knowledge reads modern exports but rejects escaping metadata paths
 });
 
 test("proof selection asks only for unresolved unsupported uncertainty", () => {
-  const state = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const state = initialUncertainty(contract("Fix race"), "elevated");
   assert.equal(remainingProof(state, ["reproduction", "test", "diff", "graph", "repository_rule", "contract"]).some((item) => item.uncertainty === "cause"), false);
 });
 
 test("regression uncertainty requires both structural impact and behavioral proof", () => {
-  const resolved = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
+  const resolved = initialUncertainty(contract("Fix race"), "elevated");
   for (const kind of Object.keys(resolved) as (keyof typeof resolved)[]) resolved[kind] = "resolved";
   assert.equal(hasSufficientProof("regression", ["graph"]), false);
   assert.equal(hasSufficientProof("regression", ["test"]), false);

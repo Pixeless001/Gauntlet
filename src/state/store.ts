@@ -1,13 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { TaskState } from "../core/task-state.js";
+import { parseTaskState, type TaskState } from "../core/task-state.js";
 import type { TaskMeasurement } from "../core/measure.js";
 import { MAX_STATE_BYTES } from "../core/policy.js";
-import { DEFAULT_INTERVENTION_BUDGET } from "../core/policy.js";
-import { initialUncertainty } from "../control/uncertainty.js";
-import { assessRisk } from "../core/risk.js";
-import type { ExecutionCheckpoint } from "../execution-state/checkpoints.js";
+import { migrateTaskV1 } from "./v1-migration.js";
+import { migrateLegacyKeys } from "./v1-migration.js";
+import { ArtifactStore } from "../output/store.js";
 
 export class StateStore {
   readonly directory: string;
@@ -19,25 +18,25 @@ export class StateStore {
     if (Buffer.byteLength(content) > MAX_STATE_BYTES) throw new Error("Gauntlet state exceeds 256KB");
     const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`; await writeFile(temporary, content, { mode: 0o600 }); await rename(temporary, path);
   }
-  async saveTask(state: TaskState) { await mkdir(join(this.directory, "tasks"), { recursive: true, mode: 0o700 }); await this.atomicWrite(this.taskPath(state.id), state); }
+  async saveTask(state: TaskState) { const parsed = parseTaskState(state); if (resolve(parsed.repository) !== this.repository) throw new Error("Invalid Gauntlet task state"); await mkdir(join(this.directory, "tasks"), { recursive: true, mode: 0o700 }); await this.atomicWrite(this.taskPath(parsed.id), parsed); }
   async loadTask(id: string): Promise<TaskState> {
-    const content = await readFile(this.taskPath(id), "utf8");
+    const path = this.taskPath(id), content = await readFile(path, "utf8");
     if (Buffer.byteLength(content) > MAX_STATE_BYTES) throw new Error("Gauntlet state exceeds 256KB");
-    const state = JSON.parse(content) as TaskState;
-    if (state.version !== 1 || state.id !== id || typeof state.repository !== "string" || resolve(state.repository) !== this.repository || !Array.isArray(state.activities)) throw new Error("Invalid Gauntlet task state");
-    if (state.session) {
-      const root: ExecutionCheckpoint = { id: "task-root", kind: "task", status: "active", summary: state.contract.intent, constraints: [...state.contract.constraints], decisions: [], relevantFiles: [...state.contract.explicitPaths], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] };
-      state.session = {
-      currentApproach: state.session.currentApproach ?? "", decisions: state.session.decisions ?? [], resolvedIssues: state.session.resolvedIssues ?? [], unresolvedIssues: state.session.unresolvedIssues ?? [], failedApproaches: state.session.failedApproaches ?? [], activeSkills: state.session.activeSkills ?? [], lastCompactedActivity: state.session.lastCompactedActivity ?? 0, compactions: state.session.compactions ?? 0, budget: state.session.budget ?? { ...DEFAULT_INTERVENTION_BUDGET }, observations: state.session.observations ?? [], repeatReadsDetected: state.session.repeatReadsDetected ?? 0, searches: state.session.searches ?? [], repeatSearchesDetected: state.session.repeatSearchesDetected ?? 0, uncertainty: state.session.uncertainty ?? initialUncertainty(state.contract, assessRisk(state.contract).level), selectionTraces: state.session.selectionTraces ?? [], interventionsUsed: state.session.interventionsUsed ?? state.session.activeSkills?.length ?? 0, graphExpansions: state.session.graphExpansions ?? 0, externalDocCalls: state.session.externalDocCalls ?? 0, browserActivations: state.session.browserActivations ?? 0, delegations: state.session.delegations ?? 0, exhaustedEscalation: state.session.exhaustedEscalation ?? {}, execution: state.session.execution ? { ...state.session.execution, events: state.session.execution.events ?? [], nextEvent: state.session.execution.nextEvent ?? 0 } : { activeCheckpointId: root.id, checkpoints: [root], events: [], nextEvent: 0 },
-    };
-    }
+    let raw: unknown;
+    try { raw = JSON.parse(content); } catch { throw new Error("Invalid Gauntlet task state"); }
+    let migrated = migrateTaskV1(raw);
+    if ((raw as { version?: unknown })?.version === 1) migrated = await importStoredReferences(this.repository, id, migrated);
+    let state: TaskState;
+    try { state = parseTaskState(migrated); } catch { throw new Error("Invalid Gauntlet task state"); }
+    if (state.id !== id || resolve(state.repository) !== this.repository) throw new Error("Invalid Gauntlet task state");
+    if ((raw as { version?: unknown })?.version === 1) await this.atomicWrite(path, state);
     return state;
   }
   async updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState> {
     const lock = `${this.taskPath(id)}.lock`;
     for (let attempt = 0; ; attempt++) {
       try { await mkdir(lock); await writeFile(join(lock, "owner"), `${process.pid}\n${Date.now()}\n`); break; } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt >= 250) throw error;
+        if (!["EEXIST", "EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "") || attempt >= 250) throw error;
         try { if (Date.now() - (await stat(lock)).mtimeMs > 30_000 && !await liveOwner(lock)) await rm(lock, { recursive: true, force: true }); } catch { /* another writer released it */ }
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
@@ -46,6 +45,23 @@ export class StateStore {
     finally { await rm(lock, { recursive: true, force: true }); }
   }
   async saveMeasurement(value: TaskMeasurement) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); }
+  async loadMeasurement(): Promise<TaskMeasurement | null> {
+    const path = join(this.directory, "last-result.json");
+    try { const raw = JSON.parse(await readFile(path, "utf8")), migrated = migrateLegacyKeys(raw) as TaskMeasurement; if (!migrated || typeof migrated !== "object" || typeof migrated.taskId !== "string") return null; if (JSON.stringify(raw) !== JSON.stringify(migrated)) await this.atomicWrite(path, migrated); return migrated; } catch { return null; }
+  }
+}
+
+async function importStoredReferences(repository: string, taskId: string, value: unknown): Promise<unknown> {
+  const imported = new Map<string, string>(), store = new ArtifactStore(repository);
+  const visit = async (item: unknown): Promise<unknown> => {
+    if (Array.isArray(item)) return Promise.all(item.map(visit));
+    if (item && typeof item === "object") return Object.fromEntries(await Promise.all(Object.entries(item).map(async ([key, child]) => [key, await visit(child)])));
+    if (typeof item !== "string" || !/^\.gauntlet[\\/]runs[\\/][\w-]+[\\/]outputs[\\/][\w-]+\.log$/.test(item)) return item;
+    if (imported.has(item)) return imported.get(item)!;
+    const path = resolve(repository, item), root = resolve(repository, ".gauntlet", "runs"); if (!path.startsWith(`${root}${process.platform === "win32" ? "\\" : "/"}`)) return item;
+    try { const output = await readFile(path, "utf8"), metadata = await store.put(taskId, { operation: "legacy-command", target: item, input: "", output, status: "unknown", semanticDescription: "Migrated command result", paths: [], symbols: [], processor: "log" }); imported.set(item, metadata.artifactRef); return metadata.artifactRef; } catch { return item; }
+  };
+  return visit(value);
 }
 
 async function liveOwner(lock: string): Promise<boolean> {

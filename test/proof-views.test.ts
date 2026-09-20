@@ -7,7 +7,7 @@ const packet = (id: string, authority: "repository" | "external", detailLevel: P
   claims: [{ id: "api:retry", subject: "retry", statement: "retry accepts a signal", authority, sourceRefs: [{ source: id, locator }] }],
 });
 
-test("proof fusion keeps authoritative claims and merged sources", () => {
+test("proof fusion keeps authoritative claims and merged source files", () => {
   const fused = fuseProof([packet("docs", "external", "concise", "web"), packet("types", "repository", "reference", "index.d.ts")]);
   assert.equal(fused.length, 1);
   assert.equal(fused[0]?.id, "types");

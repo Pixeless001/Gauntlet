@@ -3,10 +3,11 @@ import { relative } from "node:path";
 import { eventSchema, type GauntletEvent } from "../core/events.js";
 import type { HarnessCapabilities } from "./types.js";
 
-export const hookCapabilities = (failure: boolean): HarnessCapabilities => ({
+export const hookCapabilities = (failure: boolean, replacement: HarnessCapabilities["output"]["replacement"]): HarnessCapabilities => ({
   skills: { supported: true, dynamicLoad: true }, lifecycle: { taskStart: true, toolActivity: true, failure, beforeStop: true },
   tools: { shell: true, mcp: false, browser: false }, delegation: { supported: false, callback: false, modelSelection: false },
   telemetry: { tokens: false, cost: false }, environment: { worktrees: false, sandbox: false },
+  output: { replacement, preventsInitialContextCost: replacement === "general" || replacement === "mcp" }, compaction: { hooks: true },
 });
 
 type NativeEvent = Record<string, unknown>;
@@ -22,7 +23,9 @@ function activity(value: NativeEvent, repository: string, failed: boolean) {
   const kind = /(?:read|view|cat|open_file)/.test(lower) ? "file_read" : /(?:edit|write|patch|notebook)/.test(lower) ? "file_write" : /(?:bash|shell|terminal|command|exec)/.test(lower) || command ? "command" : "message";
   const target = kind === "command" ? normalizeCommand(command ?? name) : path ?? name;
   const report = record(input.gauntlet_state ?? value.gauntlet_state);
-  return { kind: Object.keys(report).length ? "decision_signal" as const : kind, target: target.slice(0, 500), outcome: failed ? "fail" as const : "pass" as const, outputBytes: JSON.stringify(value.tool_response ?? value.result ?? value.error_message ?? "").length, ...(Object.keys(report).length ? { report } : {}) };
+  const output = JSON.stringify(value.tool_response ?? value.result ?? value.error_message ?? "");
+  const processor = /test/.test(lower) ? "test" as const : /search|grep|find/.test(lower) ? "search" as const : /browser|screenshot/.test(lower) ? "browser" as const : /diff|patch/.test(lower) ? "diff" as const : /read|view|open_file/.test(lower) ? "code" as const : "log" as const;
+  return { kind: Object.keys(report).length ? "decision_signal" as const : kind, target: target.slice(0, 500), outcome: failed ? "fail" as const : "pass" as const, outputBytes: Buffer.byteLength(output), toolPayload: { operation: name, target: target.slice(0, 1_000), input: JSON.stringify(input), output, status: failed ? "fail" as const : "pass" as const, paths: path ? [path] : [], symbols: [], processor }, ...(Object.keys(report).length ? { report } : {}) };
 }
 
 function normalizePath(repository: string, path: string): string {
@@ -57,5 +60,6 @@ export function translateNativeEvent(input: unknown, nativeEvents: string[], exp
     const failed = failedActivity(value, name);
     return eventSchema.parse({ ...base, type: "task_activity", activity: activity(value, base.repository, failed) });
   }
+  if (["PreCompact", "preCompact"].includes(name)) return eventSchema.parse({ ...base, type: "lifecycle", phase: "pre_compact" });
   return eventSchema.parse({ ...base, type: "before_stop" });
 }
