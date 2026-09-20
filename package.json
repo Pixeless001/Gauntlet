@@ -9,6 +9,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "smoke:install": "node scripts/install-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts",
     "check": "npm run typecheck && npm test"
