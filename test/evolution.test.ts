@@ -7,7 +7,7 @@ import { PatternStore, type ExperiencePattern } from "../src/knowledge/patterns.
 import { evaluateProposal, proposeAtomicChange } from "../src/knowledge/evolution.js";
 import { compareEval, silenceResult } from "../src/measure/evals.js";
 
-const pattern = (id = "repeat-failure"): ExperiencePattern => ({ id, kind: "selector", status: "supported", summary: "Investigate after repeated unsupported patches", taskClasses: ["debug"], supportingEvidence: ["run:1", "run:2"], contradictingEvidence: [], updatedAt: new Date(0).toISOString() });
+const pattern = (id = "repeat-failure"): ExperiencePattern => ({ id, kind: "selector", status: "supported", summary: "Investigate after repeated unsupported patches", taskClasses: ["debug"], supportingProof: ["run:1", "run:2"], contradictingProof: [], updatedAt: new Date(0).toISOString() });
 
 test("experience storage remains bounded and proposes one atomic change", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-patterns-"));

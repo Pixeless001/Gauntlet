@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolvePackageKnowledge } from "../src/knowledge/resolver.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
-import { hasSufficientEvidence, remainingEvidence } from "../src/verify/evidence-selector.js";
+import { hasSufficientProof, remainingProof } from "../src/verify/proof-selector.js";
 import { correctionPacket } from "../src/verify/correction.js";
 
 test("package knowledge stops at installed types before external docs", async () => {
@@ -26,21 +26,21 @@ test("package knowledge reads modern exports but rejects escaping metadata paths
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("evidence selection asks only for unresolved unsupported uncertainty", () => {
+test("proof selection asks only for unresolved unsupported uncertainty", () => {
   const state = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
-  assert.equal(remainingEvidence(state, ["reproduction", "test", "diff", "graph", "repository_rule", "contract"]).some((item) => item.uncertainty === "cause"), false);
+  assert.equal(remainingProof(state, ["reproduction", "test", "diff", "graph", "repository_rule", "contract"]).some((item) => item.uncertainty === "cause"), false);
 });
 
-test("regression uncertainty requires both structural impact and behavioral evidence", () => {
+test("regression uncertainty requires both structural impact and behavioral proof", () => {
   const resolved = initialUncertainty({ intent: "Fix race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
   for (const kind of Object.keys(resolved) as (keyof typeof resolved)[]) resolved[kind] = "resolved";
-  assert.equal(hasSufficientEvidence("regression", ["graph"]), false);
-  assert.equal(hasSufficientEvidence("regression", ["test"]), false);
-  assert.equal(hasSufficientEvidence("regression", ["graph", "test"]), true);
-  assert.deepEqual(remainingEvidence({ ...resolved, regression: "open" }, ["graph"]), [{ uncertainty: "regression", evidence: "test" }]);
+  assert.equal(hasSufficientProof("regression", ["graph"]), false);
+  assert.equal(hasSufficientProof("regression", ["test"]), false);
+  assert.equal(hasSufficientProof("regression", ["graph", "test"]), true);
+  assert.deepEqual(remainingProof({ ...resolved, regression: "open" }, ["graph"]), [{ uncertainty: "regression", proof: "test" }]);
 });
 
-test("correction packets are bounded and evidence backed", () => {
-  const packet = correctionPacket([{ code: "route", severity: "error", blocking: true, message: "Route bypasses repository layer", evidence: ["src/route.ts:4"] }], ["src/route.ts"]);
-  assert.deepEqual(packet?.scope, ["src/route.ts"]); assert.deepEqual(packet?.evidence, ["src/route.ts:4"]); assert.equal(packet?.uncertainty, "regression");
+test("correction packets are bounded and proof backed", () => {
+  const packet = correctionPacket([{ code: "route", severity: "error", blocking: true, message: "Route bypasses repository layer", proof: ["src/route.ts:4"] }], ["src/route.ts"]);
+  assert.deepEqual(packet?.scope, ["src/route.ts"]); assert.deepEqual(packet?.proof, ["src/route.ts:4"]); assert.equal(packet?.uncertainty, "regression");
 });

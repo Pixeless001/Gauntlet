@@ -1,4 +1,4 @@
-type ContributionKind = "owner" | "caller" | "dependency" | "interface" | "invariant" | "acceptance" | "contradiction" | "evidence";
+type ContributionKind = "owner" | "caller" | "dependency" | "interface" | "invariant" | "acceptance" | "contradiction" | "proof";
 export type Contribution = ContributionKind | `${ContributionKind}:${string}`;
 export interface ContextCandidate<T> { value: T; contributions: Contribution[]; cost: number }
 

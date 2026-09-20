@@ -11,6 +11,6 @@ Inspect only this change for unnecessary scope, duplicate capability, unjustifie
 
 Compare against existing helpers, dependency state, test integrity, package boundaries, exports, and strong conventions. Account for authorization boundaries, untrusted input, data integrity, concurrency, accessibility, and migration safety only where the diff touches those risks.
 
-Ignore unrelated debt. Do not report vague preferences. Report only concrete issues worth fixing, with evidence. Do not invent findings when none exist.
+Ignore unrelated debt. Do not report vague preferences. Report only concrete issues worth fixing, with proof. Do not invent findings when none exist.
 
 Stop when every changed responsibility has been checked once against the task and repository.

@@ -2,10 +2,10 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export type PatternStatus = "observed" | "supported" | "promoted";
-export type PatternKind = "skill" | "selector" | "repository-rule" | "evidence-policy" | "context-policy" | "reference";
+export type PatternKind = "skill" | "selector" | "repository-rule" | "proof-policy" | "context-policy" | "reference";
 export interface ExperiencePattern {
   id: string; kind: PatternKind; status: PatternStatus; summary: string; taskClasses: string[];
-  supportingEvidence: string[]; contradictingEvidence: string[]; repositoryFingerprint?: string; updatedAt: string;
+  supportingProof: string[]; contradictingProof: string[]; repositoryFingerprint?: string; updatedAt: string;
 }
 
 const MAX_PATTERNS = 200, MAX_TEXT = 1_000;
@@ -26,5 +26,5 @@ export class PatternStore {
 
 function valid(value: unknown): value is ExperiencePattern {
   if (!value || typeof value !== "object") return false; const item = value as ExperiencePattern;
-  return /^[a-z0-9][a-z0-9._-]{0,127}$/.test(item.id) && ["skill", "selector", "repository-rule", "evidence-policy", "context-policy", "reference"].includes(item.kind) && ["observed", "supported", "promoted"].includes(item.status) && typeof item.summary === "string" && item.summary.length > 0 && item.summary.length <= MAX_TEXT && Array.isArray(item.taskClasses) && Array.isArray(item.supportingEvidence) && Array.isArray(item.contradictingEvidence) && typeof item.updatedAt === "string";
+  return /^[a-z0-9][a-z0-9._-]{0,127}$/.test(item.id) && ["skill", "selector", "repository-rule", "proof-policy", "context-policy", "reference"].includes(item.kind) && ["observed", "supported", "promoted"].includes(item.status) && typeof item.summary === "string" && item.summary.length > 0 && item.summary.length <= MAX_TEXT && Array.isArray(item.taskClasses) && Array.isArray(item.supportingProof) && Array.isArray(item.contradictingProof) && typeof item.updatedAt === "string";
 }

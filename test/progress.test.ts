@@ -4,17 +4,17 @@ import { assessProgress } from "../src/execution-state/progress.js";
 import type { ExecutionCheckpoint } from "../src/execution-state/checkpoints.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
 
-const point = (id: string, status: ExecutionCheckpoint["status"] = "active"): ExecutionCheckpoint => ({ id, kind: "implementation", status, summary: id, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [], ...(status === "rejected" ? { rejectionReason: "invalid approach" } : {}) });
+const point = (id: string, status: ExecutionCheckpoint["status"] = "active"): ExecutionCheckpoint => ({ id, kind: "implementation", status, summary: id, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [], ...(status === "rejected" ? { rejectionReason: "invalid approach" } : {}) });
 const uncertainty = () => initialUncertainty({ intent: "Fix broken behavior", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
 
-test("progress stalls only when repeated work adds no evidence", () => {
+test("progress stalls only when repeated work adds no proof", () => {
   const checkpoints = [point("root")];
   const stalled = assessProgress({ checkpoints, activeCheckpointId: "root", uncertainty: uncertainty(), events: [
     { index: 0, type: "failure", target: "npm test", outcome: "fail" }, { index: 1, type: "failure", target: "npm test", outcome: "fail" },
   ] });
   assert.equal(stalled.status, "STALLED");
   const progress = assessProgress({ checkpoints, activeCheckpointId: "root", uncertainty: uncertainty(), events: [...[
-    { index: 0, type: "failure" as const, target: "npm test", outcome: "fail" as const }, { index: 1, type: "test_result" as const, target: "cause", outcome: "pass" as const, evidenceRef: "run:2" },
+    { index: 0, type: "failure" as const, target: "npm test", outcome: "fail" as const }, { index: 1, type: "test_result" as const, target: "cause", outcome: "pass" as const, proofRef: "run:2" },
   ]] });
   assert.equal(progress.status, "PROGRESS");
 });

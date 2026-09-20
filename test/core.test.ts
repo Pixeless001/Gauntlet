@@ -26,7 +26,7 @@ test("only flags costly ambiguity", () => {
 test("compaction preserves contract and unresolved findings", () => {
   const value = state();
   value.activities.push(...Array.from({ length: 3 }, () => ({ kind: "command" as const, target: "npm test", outcome: "fail" as const, outputBytes: 10 })));
-  value.findings.push({ code: "failure", severity: "warning", message: "Boundary unresolved", evidence: [] });
+  value.findings.push({ code: "failure", severity: "warning", message: "Boundary unresolved", proof: [] });
   assert.deepEqual(shouldCompact(value).reasons, ["multiple failed attempts"]);
   assert.deepEqual(compact(value), { task: "Fix race", acceptanceCriteria: ["No duplicate refresh"], constraints: ["Preserve API"], repoConstraints: [], workingSet: ["src/session.ts"], unresolved: ["Boundary unresolved"], failedApproaches: ["npm test"] });
 });
@@ -52,13 +52,13 @@ test("measurement does not equate absent tests with verification", () => {
 });
 
 test("only blocking findings prevent a clean result", () => {
-  const advisory = state(); advisory.findings.push({ code: "dependency-added", severity: "warning", blocking: false, message: "review", evidence: ["x"] });
-  const blocking = state(); blocking.findings.push({ code: "test-deleted", severity: "error", blocking: true, message: "restore", evidence: ["x"] });
+  const advisory = state(); advisory.findings.push({ code: "dependency-added", severity: "warning", blocking: false, message: "review", proof: ["x"] });
+  const blocking = state(); blocking.findings.push({ code: "test-deleted", severity: "error", blocking: true, message: "restore", proof: ["x"] });
   assert.equal(measure(advisory, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, true); assert.equal(measure(blocking, [], [], new Date("2026-01-01T00:00:01.000Z")).clean, false);
 });
 
 test("measurement exposes selection and execution-memory restraint", () => {
-  const value = state(); value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 0, compactions: 0, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 1, extraLlmCalls: 0 }, observations: [], repeatReadsDetected: 0, selectionTraces: [], interventionsUsed: 0, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, execution: { activeCheckpointId: "root", nextEvent: 1, events: [{ index: 0, type: "command", outcome: "pass" }], checkpoints: [{ id: "root", kind: "task", status: "active", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }] } };
+  const value = state(); value.session = { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 0, compactions: 0, budget: { interventions: 2, compactions: 1, expensiveChecks: 1, skillInvocations: 1, extraLlmCalls: 0 }, observations: [], repeatReadsDetected: 0, selectionTraces: [], interventionsUsed: 0, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, execution: { activeCheckpointId: "root", nextEvent: 1, events: [{ index: 0, type: "command", outcome: "pass" }], checkpoints: [{ id: "root", kind: "task", status: "active", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] }] } };
   const result = measure(value, [], [{ id: "check", reason: "check", command: "check", exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, status: "pass", summary: "pass" }]);
   assert.deepEqual(result.selection, { interventions: 0, traces: 0, averageDepth: 0, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0 }); assert.deepEqual(result.memory, { rawEvents: 1, checkpoints: 1, activePath: 1, rejectedBranches: 0 });
 });

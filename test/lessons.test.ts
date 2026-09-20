@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { loadLessons, saveLesson, sourceFingerprint } from "../src/repo/lessons.js";
 import { createContextPacket, formatContext } from "../src/core/context.js";
 
-test("lessons remain small, scoped, and evidence-backed", async () => {
+test("lessons remain small, scoped, and proof-backed", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-lessons-"));
   try {
     await writeFile(join(cwd, "auth.test.ts"), "expiry equality is expired"); const fingerprint = await sourceFingerprint(cwd, "auth.test.ts"); assert.ok(fingerprint);
@@ -23,11 +23,11 @@ test("verified lessons enter the bounded task context", async () => {
     await saveLesson(cwd, { scope: ".", fact: "auth errors use AuthError", source: "auth.ts", fingerprint });
     const packet = await createContextPacket(cwd, { intent: "change auth.ts", acceptanceCriteria: [], constraints: [], explicitPaths: ["auth.ts"] });
     assert.match(formatContext(packet), /Verified repository lessons:[\s\S]*AuthError/);
-    assert.ok(packet.evidence?.some((item) => item.id.startsWith("lesson:") && item.claims[0]?.authority === "cached"));
+    assert.ok(packet.proof?.some((item) => item.id.startsWith("lesson:") && item.claims[0]?.authority === "cached"));
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("lessons reject stale and out-of-repository evidence", async () => {
+test("lessons reject stale and out-of-repository proof", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-lessons-"));
   try { await assert.rejects(saveLesson(cwd, { scope: ".", fact: "unsafe", source: "../outside", fingerprint: "a".repeat(64) }), /outside/); }
   finally { await rm(cwd, { recursive: true, force: true }); }

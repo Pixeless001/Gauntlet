@@ -27,7 +27,7 @@ test("Cursor sessionStart returns environment and native context fields", async 
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("Cursor task id environment handoff remains stable", async () => {
+test("Cursor task id remains stable across environments", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-cursor-id-hook-"));
   try {
     const started = await dispatchHook("cursor", { session_id: "session", cwd }, "sessionStart"); const id = String((started.env as Record<string, unknown>).GAUNTLET_TASK_ID);

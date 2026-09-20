@@ -35,7 +35,7 @@ test("adapter detects failures reported inside successful post-tool events", () 
 });
 
 test("adapter carries a structured Gauntlet state report", () => {
-  const value = codexAdapter.translate({ session_id: "report", cwd: "/repo", tool_name: "gauntlet_state", tool_input: { gauntlet_state: { kind: "cause_validated", summary: "request race reproduced", constraints: [], relevantFiles: ["src/request.ts"], relevantSymbols: [], evidenceRefs: ["test:race"] } } }, "PostToolUse");
+  const value = codexAdapter.translate({ session_id: "report", cwd: "/repo", tool_name: "gauntlet_state", tool_input: { gauntlet_state: { kind: "cause_validated", summary: "request race reproduced", constraints: [], relevantFiles: ["src/request.ts"], relevantSymbols: [], proofRefs: ["test:race"] } } }, "PostToolUse");
   assert.equal(value.type, "task_activity");
   if (value.type === "task_activity") { assert.equal(value.activity.kind, "decision_signal"); assert.equal(value.activity.report?.kind, "cause_validated"); assert.deepEqual(value.activity.report?.relevantFiles, ["src/request.ts"]); }
 });

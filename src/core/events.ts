@@ -6,7 +6,7 @@ export const stateReportSchema = z.object({
   constraints: z.array(z.string().max(500)).max(20).default([]),
   relevantFiles: z.array(z.string().max(500)).max(50).default([]),
   relevantSymbols: z.array(z.string().max(500)).max(50).default([]),
-  evidenceRefs: z.array(z.string().max(500)).max(50).default([]),
+  proofRefs: z.array(z.string().max(500)).max(50).default([]),
 });
 
 export const activitySchema = z.object({
@@ -14,7 +14,7 @@ export const activitySchema = z.object({
   target: z.string().optional(),
   outcome: z.enum(["pass", "fail", "unknown"]).optional(),
   outputBytes: z.number().int().nonnegative().default(0),
-  evidenceRef: z.string().optional(),
+  proofRef: z.string().optional(),
   report: stateReportSchema.optional(),
 });
 
@@ -47,5 +47,5 @@ export interface Finding {
   severity: "info" | "warning" | "error";
   blocking?: boolean;
   message: string;
-  evidence: string[];
+  proof: string[];
 }

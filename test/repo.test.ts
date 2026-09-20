@@ -89,9 +89,9 @@ test("injects only applicable instructions in precedence order", () => fixture(a
 
 test("formats the valid execution path without raw history", () => fixture(async (cwd) => {
   await writeFile(join(cwd, "source.ts"), "export const value = 1\n");
-  const execution: ActiveExecutionContext = { task: "Fix behavior", acceptanceCriteria: [], constraints: [], validatedState: ["Cause established"], current: "Reuse existing primitive", relevantFiles: ["source.ts"], relevantSymbols: [], evidenceRefs: ["evidence/test.log"], open: ["regression"] };
+  const execution: ActiveExecutionContext = { task: "Fix behavior", acceptanceCriteria: [], constraints: [], validatedState: ["Cause established"], current: "Reuse existing primitive", relevantFiles: ["source.ts"], relevantSymbols: [], proofRefs: ["proof/test.log"], open: ["regression"] };
   const packet = await selectContext(cwd, { intent: execution.task, explicitPaths: ["source.ts"], acceptanceCriteria: [], constraints: [] }); packet.execution = execution;
-  const formatted = formatContext(packet); assert.match(formatted, /Validated: Cause established/); assert.match(formatted, /Open: regression/); assert.match(formatted, /evidence\/test\.log/);
+  const formatted = formatContext(packet); assert.match(formatted, /Validated: Cause established/); assert.match(formatted, /Open: regression/); assert.match(formatted, /proof\/test\.log/);
 }));
 
 test("ranks direct imports and corresponding tests after the explicit target", () => fixture(async (cwd) => {

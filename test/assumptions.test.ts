@@ -13,7 +13,7 @@ test("assumptions prefer bounded repository usage", async () => {
   try {
     await writeFile(join(cwd, "large.ts"), "x".repeat(100)); await writeFile(join(cwd, "usage.ts"), "import { parse } from 'zod'; parse();");
     const value = await resolveAssumption(cwd, { packageName: "zod", symbol: "parse" }, index(["large.ts", "usage.ts"]), 4, 64);
-    assert.equal(value.kind, "repository-usage"); assert.deepEqual(value.evidence, ["usage.ts"]);
+    assert.equal(value.kind, "repository-usage"); assert.deepEqual(value.proof, ["usage.ts"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

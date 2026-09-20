@@ -21,7 +21,7 @@ export async function loadLessons(cwd: string, paths: string[] = []): Promise<Re
 
 export async function saveLesson(cwd: string, lesson: RepositoryLesson): Promise<void> {
   if (!valid(lesson) || lesson.fact.length > 500 || lesson.scope.length > 300 || lesson.source.length > 500) throw new Error("Invalid repository lesson");
-  if (await sourceFingerprint(cwd, lesson.source) !== lesson.fingerprint) throw new Error("Lesson evidence is stale or outside the repository");
+  if (await sourceFingerprint(cwd, lesson.source) !== lesson.fingerprint) throw new Error("Lesson proof is stale or outside the repository");
   const directory = join(cwd, ".gauntlet"), path = join(directory, "lessons.jsonl"), lock = `${path}.lock`;
   await mkdir(directory, { recursive: true, mode: 0o700 }); await acquire(lock);
   try {

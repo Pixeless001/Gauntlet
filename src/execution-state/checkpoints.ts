@@ -5,7 +5,7 @@ export type CheckpointStatus = "active" | "validated" | "rejected";
 export interface ExecutionCheckpoint {
   id: string; parentId?: string; kind: CheckpointKind; status: CheckpointStatus; summary: string;
   constraints: string[]; decisions: string[]; relevantFiles: string[]; relevantSymbols: string[];
-  evidenceRefs: string[]; rejectionReason?: string; createdFromEvent: number; resolves: UncertaintyKind[];
+  proofRefs: string[]; rejectionReason?: string; createdFromEvent: number; resolves: UncertaintyKind[];
 }
 
 export function activePath(checkpoints: ExecutionCheckpoint[], activeId: string): ExecutionCheckpoint[] {

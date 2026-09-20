@@ -14,4 +14,4 @@ budget: one baseline and one comparison
 5. Reject complexity that buys a negligible improvement.
 6. Measure again using the same conditions and compare with the original baseline.
 
-Stop once the dominant relevant cost is addressed. Do not optimize smaller costs without evidence they matter.
+Stop once the dominant relevant cost is addressed. Do not optimize smaller costs without proof they matter.

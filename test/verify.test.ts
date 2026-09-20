@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initialUncertainty } from "../src/control/uncertainty.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../src/core/policy.js";
-import { remainingEvidence } from "../src/verify/evidence-selector.js";
+import { remainingProof } from "../src/verify/proof-selector.js";
 
 test("verification uses declared tools and stops without changes", () => {
   const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], commands: [{ name: "typecheck", command: "npm", args: ["run", "typecheck"] }, { name: "test", command: "npm", args: ["test"] }] };
@@ -17,17 +17,17 @@ test("verification uses declared tools and stops without changes", () => {
   assert.deepEqual(selectVerification(profile, [{ path: "a.ts", added: 1, removed: 0 }]).checks.map((item) => item.id), ["typecheck", "repository-tests"]);
 });
 
-test("verification evidence is selected by the shared control plane", () => {
+test("verification proof is selected by the shared control plane", () => {
   const profile = { packageManager: "npm", language: ["typescript"], harnesses: [], commands: [{ name: "typecheck", command: "npm", args: ["run", "typecheck"] }, { name: "lint", command: "npm", args: ["run", "lint"] }, { name: "test", command: "npm", args: ["test"] }] };
   const contract = { intent: "Change behavior in a.ts", acceptanceCriteria: [], explicitPaths: ["a.ts"], constraints: [] }, uncertainty = initialUncertainty(contract, "ordinary");
   const plan = selectVerification(profile, [{ path: "a.ts", added: 1, removed: 0 }], [], undefined, { uncertainty, budget: DEFAULT_INTERVENTION_BUDGET, event: 3 });
-  assert.deepEqual(plan.checks.map((item) => item.id), ["lint", "repository-tests"]); assert.equal(plan.selectionTrace?.trigger, "before_stop"); assert.equal(plan.selectionTrace?.rejected.find((item) => item.id === "evidence:typecheck")?.reason, "dominated");
+  assert.deepEqual(plan.checks.map((item) => item.id), ["lint", "repository-tests"]); assert.equal(plan.selectionTrace?.trigger, "before_stop"); assert.equal(plan.selectionTrace?.rejected.find((item) => item.id === "proof:typecheck")?.reason, "dominated");
 });
 
-test("completion does not demand evidence from an unavailable provider", () => {
+test("completion does not demand proof from an unavailable provider", () => {
   const uncertainty = initialUncertainty({ intent: "Implement a visual modal", acceptanceCriteria: [], explicitPaths: ["modal.tsx"], constraints: [] }, "ordinary");
-  assert.equal(remainingEvidence(uncertainty, ["diff"], ["diff", "repository_rule", "test"]).some((item) => item.uncertainty === "visual"), false);
-  assert.equal(remainingEvidence(uncertainty, ["diff"], ["diff", "repository_rule", "test", "browser"]).some((item) => item.uncertainty === "visual"), true);
+  assert.equal(remainingProof(uncertainty, ["diff"], ["diff", "repository_rule", "test"]).some((item) => item.uncertainty === "visual"), false);
+  assert.equal(remainingProof(uncertainty, ["diff"], ["diff", "repository_rule", "test", "browser"]).some((item) => item.uncertainty === "visual"), true);
 });
 
 test("documentation-only changes avoid build and behavioral suites", () => {
@@ -77,7 +77,7 @@ test("summary is compact and factual", () => {
   assert.match(output, /✓ CLEAN/); assert.match(output, /LoC\s+\+3\/-1/);
 });
 
-test("failed completion reports actionable evidence and its raw reference", () => {
-  const output = formatSummary({ version: 1, taskId: "x", startedAt: "", finishedAt: "", durationMs: 1, attempts: 1, files: 1, added: 1, removed: 0, testsPassed: 0, checksRun: 1, clean: false, verified: false, firstPass: false, findings: ["tests-skipped: skipped count increased (a.test.ts, 0 → 1)"], evidence: [{ id: "impacted-tests", status: "fail", summary: "npm test: failed (1)\nFAIL a.test.ts", reference: ".gauntlet/runs/x.log" }] }, false);
+test("failed completion reports actionable proof and its raw reference", () => {
+  const output = formatSummary({ version: 1, taskId: "x", startedAt: "", finishedAt: "", durationMs: 1, attempts: 1, files: 1, added: 1, removed: 0, testsPassed: 0, checksRun: 1, clean: false, verified: false, firstPass: false, findings: ["tests-skipped: skipped count increased (a.test.ts, 0 → 1)"], proof: [{ id: "impacted-tests", status: "fail", summary: "npm test: failed (1)\nFAIL a.test.ts", reference: ".gauntlet/runs/x.log" }] }, false);
   assert.match(output, /tests-skipped/); assert.match(output, /FAIL a\.test\.ts/); assert.match(output, /Full result/);
 });

@@ -3,9 +3,9 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { RepoIndex } from "./index.js";
 
-export type EvidenceKind = "repository-usage" | "installed-types" | "package-version" | "local-docs" | "external-required";
+export type ProofKind = "repository-usage" | "installed-types" | "package-version" | "local-docs" | "external-required";
 export interface Assumption { packageName: string; symbol?: string }
-export interface AssumptionResolution { assumption: Assumption; resolved: boolean; kind: EvidenceKind; evidence: string[]; fingerprint?: string }
+export interface AssumptionResolution { assumption: Assumption; resolved: boolean; kind: ProofKind; proof: string[]; fingerprint?: string }
 
 export async function resolveAssumption(cwd: string, assumption: Assumption, index: RepoIndex, maxFiles = 40, maxBytes = 64_000): Promise<AssumptionResolution> {
   if (!/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(assumption.packageName)) throw new Error("Invalid package name");
@@ -16,9 +16,9 @@ export async function resolveAssumption(cwd: string, assumption: Assumption, ind
   for (const path of [`node_modules/${assumption.packageName}/package.json`, `node_modules/${assumption.packageName}/index.d.ts`]) {
     try { const content = await readFile(join(cwd, path), "utf8"); if (!assumption.symbol || content.includes(assumption.symbol)) return resolution(assumption, path.endsWith(".d.ts") ? "installed-types" : "package-version", path, content); } catch { /* try cheaper fallback */ }
   }
-  return { assumption, resolved: false, kind: "external-required", evidence: [] };
+  return { assumption, resolved: false, kind: "external-required", proof: [] };
 }
 
-function resolution(assumption: Assumption, kind: EvidenceKind, path: string, content: string): AssumptionResolution {
-  return { assumption, resolved: true, kind, evidence: [path], fingerprint: createHash("sha256").update(content).digest("hex") };
+function resolution(assumption: Assumption, kind: ProofKind, path: string, content: string): AssumptionResolution {
+  return { assumption, resolved: true, kind, proof: [path], fingerprint: createHash("sha256").update(content).digest("hex") };
 }

@@ -31,11 +31,11 @@ import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.
 import { domainCandidates } from "../domains/resolver.js";
 import { graphExpansionCandidate } from "../intelligence/working-graph.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
-import { remainingEvidence, type EvidenceKind } from "../verify/evidence-selector.js";
+import { remainingProof, type ProofKind } from "../verify/proof-selector.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null }
-export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableEvidence?: EvidenceKind[] }
+export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableProof?: ProofKind[] }
 export class GauntletEngine {
   private readonly store: StateStore;
   constructor(readonly cwd: string, private readonly options: EngineOptions = {}) { this.store = new StateStore(cwd); }
@@ -58,7 +58,7 @@ export class GauntletEngine {
     const uncertainty = initialUncertainty(contract, risk.level), rootId = randomUUID(), budget = { ...DEFAULT_INTERVENTION_BUDGET };
     const activation = planActivation({ uncertainty, candidates: [...skillCandidates(contract, "start", risk.level), ...domainCandidates(profile, contract)], supplied: [], budget, used: 0, event: 0, trigger: "task_start" });
     const activeSkills = activation.skills.flatMap((candidate) => candidate.skill ? [candidate.skill] : []);
-    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [activation.trace], interventionsUsed: activeSkills.length, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, exhaustedEscalation: {}, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } } };
+    const state: TaskState = { version: 1, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills, lastCompactedActivity: 0, compactions: 0, budget, observations: [], repeatReadsDetected: 0, searches: [], repeatSearchesDetected: 0, uncertainty, selectionTraces: [activation.trace], interventionsUsed: activeSkills.length, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0, exhaustedEscalation: {}, execution: { activeCheckpointId: rootId, checkpoints: [{ id: rootId, kind: "task", status: "active", summary: contract.intent, constraints: [...contract.constraints], decisions: [], relevantFiles: [...contract.explicitPaths], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } } };
     await this.store.saveTask(state);
     return { state, injection: await injection(context, state.session?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null };
   }
@@ -145,16 +145,16 @@ export class GauntletEngine {
     const risk = assessRisk(state.contract, changes), newTest = changes.some((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path) && !(change.path in state.baseline.tests)), testCheck = plan.checks.find((check) => check.id.includes("test"));
     if (risk.level === "elevated" && newTest && testCheck && state.baseline.head && this.options.preChangeEnvironment) {
       const candidateTests = changes.filter((change) => /(?:test|spec)\.[cm]?[jt]sx?$/.test(change.path)).map((change) => change.path), before = await this.options.preChangeEnvironment(state.baseline.head, candidateTests), counterfactual = await verifyCounterfactual(testCheck, before, new LocalExecutionEnvironment(this.cwd), true);
-      if (counterfactual.status === "weak") state.findings.push({ code: "weak-counterfactual", severity: "warning", blocking: true, message: "The new behavioral check also passes against pre-change behavior.", evidence: counterfactual.evidence });
+      if (counterfactual.status === "weak") state.findings.push({ code: "weak-counterfactual", severity: "warning", blocking: true, message: "The new behavioral check also passes against pre-change behavior.", proof: counterfactual.proof });
     }
     if (state.session?.uncertainty && !state.findings.some((item) => item.code.startsWith("convention-"))) state.session.uncertainty.repoFit = state.session.uncertainty.repoFit === "irrelevant" ? "irrelevant" : "resolved";
     const machinePassed = results.length > 0 && results.every((result) => result.status === "pass") && state.findings.every((finding) => !finding.blocking);
-    const supplied: EvidenceKind[] = ["diff", ...(structural ? ["graph" as const] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test" as const] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule" as const])];
-    const obtainable: EvidenceKind[] = ["diff", "repository_rule", ...(currentIndex ? ["search" as const] : []), ...(structural || currentIndex ? ["graph" as const] : []), ...(plan.checks.some((check) => check.id.includes("test")) ? ["test" as const] : []), ...(this.options.availableEvidence ?? [])];
-    const outstanding = machinePassed && state.session?.uncertainty ? remainingEvidence(state.session.uncertainty, supplied, obtainable) : [];
-    for (const item of outstanding) state.findings.push({ code: `unresolved-evidence-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.evidence} evidence before completion.`, evidence: [] });
+    const supplied: ProofKind[] = ["diff", ...(structural ? ["graph" as const] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test" as const] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule" as const])];
+    const obtainable: ProofKind[] = ["diff", "repository_rule", ...(currentIndex ? ["search" as const] : []), ...(structural || currentIndex ? ["graph" as const] : []), ...(plan.checks.some((check) => check.id.includes("test")) ? ["test" as const] : []), ...(this.options.availableProof ?? [])];
+    const outstanding = machinePassed && state.session?.uncertainty ? remainingProof(state.session.uncertainty, supplied, obtainable) : [];
+    for (const item of outstanding) state.findings.push({ code: `unresolved-proof-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.proof} proof before completion.`, proof: [] });
     const passed = machinePassed && outstanding.length === 0;
-    recordVerification(state, passed, results.map((result) => result.evidence).filter((item): item is string => Boolean(item)), supplied);
+    recordVerification(state, passed, results.map((result) => result.proof).filter((item): item is string => Boolean(item)), supplied);
     const value = measure(state, changes, results);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;
@@ -170,7 +170,7 @@ async function injection(context: Awaited<ReturnType<typeof createContextPacket>
   return [STEERING_POLICY, formatContext(context), ...loaded.filter(Boolean)].join("\n\n");
 }
 
-function deduplicateFindings<T extends { code: string; evidence: string[] }>(findings: T[]): T[] {
+function deduplicateFindings<T extends { code: string; proof: string[] }>(findings: T[]): T[] {
   const seen = new Set<string>();
-  return findings.filter((finding) => { const key = `${finding.code}:${finding.evidence.join(":")}`; if (seen.has(key)) return false; seen.add(key); return true; });
+  return findings.filter((finding) => { const key = `${finding.code}:${finding.proof.join(":")}`; if (seen.has(key)) return false; seen.add(key); return true; });
 }

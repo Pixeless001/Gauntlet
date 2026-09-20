@@ -30,20 +30,20 @@ test("activation plan composes complementary candidate kinds", () => {
 
 test("selector retains complementary claims for the same uncertainty", () => {
   const uncertainty = initialUncertainty({ intent: "Fix a request race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
-  const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 3 }, used: 0, event: 0, trigger: "complementary-evidence", candidates: [
+  const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 3 }, used: 0, event: 0, trigger: "complementary-proof", candidates: [
     { id: "active-path", kind: "context", uncertainty: "cause", level: 1, cost: "tiny", authority: "runtime", contributions: ["cause:validated-path"], available: true },
-    { id: "failing-test", kind: "evidence", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", contributions: ["cause:failure-boundary"], available: true },
-    { id: "duplicate-test-output", kind: "evidence", uncertainty: "cause", level: 2, cost: "low", authority: "local", contributions: ["cause:failure-boundary"], available: true },
+    { id: "failing-test", kind: "proof", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", contributions: ["cause:failure-boundary"], available: true },
+    { id: "duplicate-test-output", kind: "proof", uncertainty: "cause", level: 2, cost: "low", authority: "local", contributions: ["cause:failure-boundary"], available: true },
   ] });
   assert.deepEqual(plan.trace.selected, ["failing-test", "active-path"]);
   assert.equal(plan.trace.rejected.find((item) => item.id === "duplicate-test-output")?.reason, "dominated");
 });
 
-test("selector prefers authoritative evidence and enforces subsystem budgets", () => {
+test("selector prefers authoritative proof and enforces subsystem budgets", () => {
   const uncertainty = initialUncertainty({ intent: "Fix visual auth race", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, "elevated");
   const plan = planActivation({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 4, skillInvocations: 1, expensiveChecks: 1 }, used: 0, event: 0, trigger: "adversarial", candidates: [
-    { id: "external-cause", kind: "evidence", uncertainty: "cause", level: 2, cost: "tiny", authority: "external", available: true },
-    { id: "repository-cause", kind: "evidence", uncertainty: "cause", level: 2, cost: "medium", authority: "repository", available: true },
+    { id: "external-cause", kind: "proof", uncertainty: "cause", level: 2, cost: "tiny", authority: "external", available: true },
+    { id: "repository-cause", kind: "proof", uncertainty: "cause", level: 2, cost: "medium", authority: "repository", available: true },
     { id: "skill:implement", kind: "skill", skill: "implement", uncertainty: "behavior", level: 3, cost: "low", available: true },
     { id: "skill:review", kind: "skill", skill: "review", uncertainty: "scope", level: 3, cost: "low", available: true },
     { id: "browser", kind: "capability", uncertainty: "visual", level: 4, cost: "medium", available: true },
@@ -56,7 +56,7 @@ test("selector prefers authoritative evidence and enforces subsystem budgets", (
 });
 
 test("execution branches preserve rejected work outside the active path", () => {
-  const root: ExecutionCheckpoint = { id: "root", kind: "task", status: "validated", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] };
+  const root: ExecutionCheckpoint = { id: "root", kind: "task", status: "validated", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] };
   const first: ExecutionCheckpoint = { ...root, id: "first", parentId: "root", kind: "implementation", status: "active", summary: "first" };
   const second: ExecutionCheckpoint = { ...first, id: "second", summary: "second" };
   const checkpoints = rejectBranch([root, first], "first", second, "duplicate primitive");
@@ -65,7 +65,7 @@ test("execution branches preserve rejected work outside the active path", () => 
 });
 
 test("branch revision resumes from the nearest validated boundary without mutating history", () => {
-  const root: ExecutionCheckpoint = { id: "root", kind: "task", status: "validated", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] };
+  const root: ExecutionCheckpoint = { id: "root", kind: "task", status: "validated", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] };
   const middle: ExecutionCheckpoint = { ...root, id: "middle", parentId: "root", kind: "decision", status: "active" };
   const leaf: ExecutionCheckpoint = { ...middle, id: "leaf", parentId: "middle", kind: "implementation", summary: "create retry wrapper" };
   const replacement: ExecutionCheckpoint = { ...leaf, id: "next", summary: "choose replacement" };
@@ -77,6 +77,6 @@ test("branch revision resumes from the nearest validated boundary without mutati
 
 test("active paths reject missing checkpoints and broken ancestry", () => {
   assert.throws(() => activePath([], "missing"), /checkpoint is missing/);
-  const orphan: ExecutionCheckpoint = { id: "orphan", parentId: "missing", kind: "implementation", status: "active", summary: "orphan", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] };
+  const orphan: ExecutionCheckpoint = { id: "orphan", parentId: "missing", kind: "implementation", status: "active", summary: "orphan", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] };
   assert.throws(() => activePath([orphan], "orphan"), /parent is missing/);
 });

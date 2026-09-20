@@ -4,8 +4,8 @@ import type { UncertaintyKind, UncertaintyState } from "./uncertainty.js";
 
 export type EscalationLevel = 0 | 1 | 2 | 3 | 4 | 5;
 export type CostClass = "tiny" | "low" | "medium" | "high";
-export type CandidateKind = "skill" | "context" | "evidence" | "capability" | "reference" | "graph-expansion";
-export type EvidenceAuthority = "cached" | "repository" | "local" | "runtime" | "external";
+export type CandidateKind = "skill" | "context" | "proof" | "capability" | "reference" | "graph-expansion";
+export type ProofAuthority = "cached" | "repository" | "local" | "runtime" | "external";
 export type RejectionReason = "resolved" | "irrelevant" | "duplicate" | "unavailable" | "dominated" | "budget_exceeded";
 export interface InterventionCandidate {
   id: string;
@@ -15,18 +15,18 @@ export interface InterventionCandidate {
   resolves?: UncertaintyKind[];
   level: EscalationLevel;
   cost: CostClass;
-  authority?: EvidenceAuthority;
+  authority?: ProofAuthority;
   source?: string;
   reason?: string;
   contributions?: string[];
   available: boolean;
 }
-export interface SelectedIntervention { id: string; kind: CandidateKind; resolves: UncertaintyKind[]; uncertainty: UncertaintyKind; level: EscalationLevel; cost: CostClass; authority: EvidenceAuthority; source: string; reason: string }
-export interface SelectionTrace { event: number; trigger: string; candidates: string[]; selected: string[]; activations: SelectedIntervention[]; rejected: { id: string; reason: RejectionReason }[]; changedState?: boolean; evidenceFound?: boolean }
+export interface SelectedIntervention { id: string; kind: CandidateKind; resolves: UncertaintyKind[]; uncertainty: UncertaintyKind; level: EscalationLevel; cost: CostClass; authority: ProofAuthority; source: string; reason: string }
+export interface SelectionTrace { event: number; trigger: string; candidates: string[]; selected: string[]; activations: SelectedIntervention[]; rejected: { id: string; reason: RejectionReason }[]; changedState?: boolean; proofFound?: boolean }
 export interface ActivationPlan {
   skills: InterventionCandidate[];
   context: InterventionCandidate[];
-  evidence: InterventionCandidate[];
+  proof: InterventionCandidate[];
   capabilities: InterventionCandidate[];
   references: InterventionCandidate[];
   graphExpansions: InterventionCandidate[];
@@ -56,15 +56,15 @@ export function selectInterventions(input: { uncertainty: UncertaintyState; cand
 export function planActivation(input: Parameters<typeof selectInterventions>[0]): ActivationPlan {
   const trace = selectInterventions(input), selected = new Set(trace.selected), candidates = input.candidates.filter((candidate) => selected.has(candidate.id));
   const ofKind = (kind: CandidateKind) => candidates.filter((candidate) => candidateKind(candidate) === kind);
-  return { skills: ofKind("skill"), context: ofKind("context"), evidence: ofKind("evidence"), capabilities: ofKind("capability"), references: ofKind("reference"), graphExpansions: ofKind("graph-expansion"), trace };
+  return { skills: ofKind("skill"), context: ofKind("context"), proof: ofKind("proof"), capabilities: ofKind("capability"), references: ofKind("reference"), graphExpansions: ofKind("graph-expansion"), trace };
 }
 
 function cost(value: CostClass): number { return { tiny: 0, low: 1, medium: 2, high: 3 }[value]; }
-function authority(value: EvidenceAuthority = "local"): number { return { repository: 0, local: 1, runtime: 2, cached: 3, external: 4 }[value]; }
+function authority(value: ProofAuthority = "local"): number { return { repository: 0, local: 1, runtime: 2, cached: 3, external: 4 }[value]; }
 function expensive(candidate: InterventionCandidate): boolean { return candidate.level >= 4 || candidate.cost === "high"; }
 function targets(candidate: InterventionCandidate): UncertaintyKind[] { return [...new Set(candidate.resolves?.length ? candidate.resolves : [candidate.uncertainty])]; }
 function contributions(candidate: InterventionCandidate): string[] { return [...new Set(candidate.contributions?.length ? candidate.contributions : targets(candidate).map((target) => `uncertainty:${target}`))]; }
-function candidateKind(candidate: InterventionCandidate): CandidateKind { return candidate.kind ?? (candidate.skill ? "skill" : "evidence"); }
+function candidateKind(candidate: InterventionCandidate): CandidateKind { return candidate.kind ?? (candidate.skill ? "skill" : "proof"); }
 function activation(candidate: InterventionCandidate): SelectedIntervention {
   return { id: candidate.id, kind: candidateKind(candidate), resolves: targets(candidate), uncertainty: candidate.uncertainty, level: candidate.level, cost: candidate.cost, authority: candidate.authority ?? "local", source: candidate.source ?? candidate.id, reason: candidate.reason ?? "Resolves remaining uncertainty" };
 }

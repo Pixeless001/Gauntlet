@@ -74,12 +74,12 @@ test("validated cause resumes implementation on the active execution path", asyn
   try {
     await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Fix race in source.ts", "cause");
     await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 }); await engine.activity("cause", { kind: "command", target: "npm test", outcome: "fail", outputBytes: 1 });
-    const result = await engine.activity("cause", { kind: "decision_signal", target: "cause: missing request coalescing", outcome: "pass", outputBytes: 0, evidenceRef: "test:race" });
+    const result = await engine.activity("cause", { kind: "decision_signal", target: "cause: missing request coalescing", outcome: "pass", outputBytes: 0, proofRef: "test:race" });
     assert.deepEqual(result.state.session?.activeSkills, ["implement"]); assert.equal(result.state.session?.uncertainty?.cause, "resolved");
     assert.equal(result.state.session?.selectionTraces?.at(-1)?.trigger, "cause_validated"); assert.deepEqual(result.state.session?.selectionTraces?.at(-1)?.selected, ["skill:implement"]);
     assert.equal(result.continuation?.workflow, "implement"); assert.match(result.continuation?.guidance ?? "", /# IMPLEMENT/);
-    assert.equal(result.state.session?.execution?.checkpoints.at(-1)?.kind, "implementation"); assert.equal(result.state.session?.execution?.events.at(-1)?.evidenceRef, "test:race");
-    const resumed = await engine.start("ignored", "cause"); assert.match(resumed.injection, /Current: missing request coalescing/); assert.match(resumed.injection, /Evidence: test:race/);
+    assert.equal(result.state.session?.execution?.checkpoints.at(-1)?.kind, "implementation"); assert.equal(result.state.session?.execution?.events.at(-1)?.proofRef, "test:race");
+    const resumed = await engine.start("ignored", "cause"); assert.match(resumed.injection, /Current: missing request coalescing/); assert.match(resumed.injection, /Proof: test:race/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -87,9 +87,9 @@ test("structured state reports populate execution checkpoints", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-report-"));
   try {
     await writeFile(join(cwd, "source.ts"), "export const value = 1;\n"); const engine = new GauntletEngine(cwd); await engine.start("Fix race in source.ts", "report");
-    const result = await engine.activity("report", { kind: "decision_signal", outcome: "pass", outputBytes: 0, report: { kind: "cause_validated", summary: "missing coalescing", constraints: ["preserve cancellation"], relevantFiles: ["source.ts"], relevantSymbols: ["value"], evidenceRefs: ["test:race"] } });
+    const result = await engine.activity("report", { kind: "decision_signal", outcome: "pass", outputBytes: 0, report: { kind: "cause_validated", summary: "missing coalescing", constraints: ["preserve cancellation"], relevantFiles: ["source.ts"], relevantSymbols: ["value"], proofRefs: ["test:race"] } });
     const checkpoint = result.state.session?.execution?.checkpoints.at(-1);
-    assert.equal(checkpoint?.summary, "missing coalescing"); assert.deepEqual(checkpoint?.constraints, ["preserve cancellation"]); assert.deepEqual(checkpoint?.relevantFiles, ["source.ts"]); assert.deepEqual(checkpoint?.evidenceRefs, ["test:race"]);
+    assert.equal(checkpoint?.summary, "missing coalescing"); assert.deepEqual(checkpoint?.constraints, ["preserve cancellation"]); assert.deepEqual(checkpoint?.relevantFiles, ["source.ts"]); assert.deepEqual(checkpoint?.proofRefs, ["test:race"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
@@ -117,12 +117,12 @@ test("execution signals update workflow and risk uncertainty", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("elevated new tests reject weak counterfactual evidence when a provider is available", async () => {
+test("elevated new tests reject weak counterfactual proof when a provider is available", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-engine-"));
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { test: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
     const git = (args: string[]) => execFile("git", args, { cwd }); await git(["init"]); await git(["config", "user.email", "test@example.com"]); await git(["config", "user.name", "Test"]); await git(["add", "."]); await git(["commit", "-m", "base"]);
-    const environment: CounterfactualEnvironment = { kind: "sandbox-provider", id: "old", root: cwd, candidateEvidenceAvailable: true, run: async () => ({ command: "test", exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false }) };
+    const environment: CounterfactualEnvironment = { kind: "sandbox-provider", id: "old", root: cwd, candidateProofAvailable: true, run: async () => ({ command: "test", exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false }) };
     let candidateTests: string[] = []; const engine = new GauntletEngine(cwd, { preChangeEnvironment: async (_head, tests) => { candidateTests = tests; return environment; } }); await engine.start("Fix authentication race", "task"); await writeFile(join(cwd, "auth.test.ts"), "test('race', () => {});\n");
     const result = await engine.finish("task"); assert.equal(result.findings.some((finding) => finding.startsWith("weak-counterfactual")), true);
     assert.deepEqual(candidateTests, ["auth.test.ts"]);
@@ -133,8 +133,8 @@ test("successful completion records a validated verification checkpoint", async 
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-verification-state-")); try { await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"", test: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); const engine = new GauntletEngine(cwd); await engine.start("Change feature.ts", "verified"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); await engine.finish("verified"); const resumed = await engine.start("", "verified"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.kind, "verification"); assert.equal(resumed.state.session?.execution?.checkpoints.at(-1)?.status, "validated"); assert.equal(resumed.state.session?.uncertainty?.scope, "resolved"); } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("static checks do not claim behavioral evidence or block on an absent provider", async () => {
-  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-static-evidence-"));
+test("static checks do not claim behavioral proof or block on an absent provider", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-static-proof-"));
   try {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
     const engine = new GauntletEngine(cwd); await engine.start("Change runtime behavior", "static"); await writeFile(join(cwd, "feature.ts"), "export const value = 1;\n"); const result = await engine.finish("static");

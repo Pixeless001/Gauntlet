@@ -18,5 +18,5 @@ export function runIntelligenceEvals(): EvalResult[] {
   ];
 }
 
-function point(id: string, kind: ExecutionCheckpoint["kind"], status: ExecutionCheckpoint["status"]): ExecutionCheckpoint { return { id, kind, status, summary: id, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], evidenceRefs: [], createdFromEvent: 0, resolves: [] }; }
-function result(caseId: string, category: EvalResult["category"], passed: boolean, started: number, interventions: number, evidence: string[]): EvalResult { return { category, caseId, passed, durationMs: performance.now() - started, interventions, extraModelCalls: 0, contextItems: 0, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, evidence }; }
+function point(id: string, kind: ExecutionCheckpoint["kind"], status: ExecutionCheckpoint["status"]): ExecutionCheckpoint { return { id, kind, status, summary: id, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] }; }
+function result(caseId: string, category: EvalResult["category"], passed: boolean, started: number, interventions: number, proof: string[]): EvalResult { return { category, caseId, passed, durationMs: performance.now() - started, interventions, extraModelCalls: 0, contextItems: 0, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, proof }; }

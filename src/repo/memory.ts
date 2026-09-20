@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RepoProfile } from "./detect.js";
 
-export interface RepositoryFact { key: string; value: string; evidence: string[]; fingerprint: string }
+export interface RepositoryFact { key: string; value: string; proof: string[]; fingerprint: string }
 
 async function fingerprint(cwd: string, paths: string[]): Promise<string> {
   const hash = createHash("sha256");
@@ -15,8 +15,8 @@ export async function deriveFacts(cwd: string, profile: RepoProfile): Promise<Re
   const sources = ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json"];
   const digest = await fingerprint(cwd, sources);
   const facts: RepositoryFact[] = [];
-  if (profile.packageManager) facts.push({ key: "package-manager", value: profile.packageManager, evidence: sources.filter((path) => path.includes(profile.packageManager!) || path === "package.json"), fingerprint: digest });
-  for (const command of profile.commands) facts.push({ key: `tool:${command.name}`, value: [command.command, ...command.args].join(" "), evidence: ["package.json"], fingerprint: digest });
+  if (profile.packageManager) facts.push({ key: "package-manager", value: profile.packageManager, proof: sources.filter((path) => path.includes(profile.packageManager!) || path === "package.json"), fingerprint: digest });
+  for (const command of profile.commands) facts.push({ key: `tool:${command.name}`, value: [command.command, ...command.args].join(" "), proof: ["package.json"], fingerprint: digest });
   return facts;
 }
 

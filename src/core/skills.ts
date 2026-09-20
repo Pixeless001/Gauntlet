@@ -32,7 +32,7 @@ function skillUncertainty(skill: SkillName): InterventionCandidate["uncertainty"
 }
 
 function skillReason(skill: SkillName): string {
-  return { understand: "Intent or acceptance remains unclear", investigate: "The cause remains uncertain", implement: "Behavioral work remains", verify: "Completion evidence remains", review: "Change scope needs review", optimize: "Measured performance work remains" }[skill];
+  return { understand: "Intent or acceptance remains unclear", investigate: "The cause remains uncertain", implement: "Behavioral work remains", verify: "Completion proof remains", review: "Change scope needs review", optimize: "Measured performance work remains" }[skill];
 }
 
 export async function loadSkill(name: SkillName): Promise<string> {

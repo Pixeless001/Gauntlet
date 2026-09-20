@@ -7,7 +7,7 @@ export interface VerificationResult extends CommandResult {
   reason: string;
   status: "pass" | "fail" | "timeout" | "unavailable";
   summary?: string;
-  evidence?: string;
+  proof?: string;
   conditionedBytes?: number;
   tokensRemoved?: number;
   actionableFailures?: number;

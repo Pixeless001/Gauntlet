@@ -17,7 +17,7 @@ async function fixture() {
   return cwd;
 }
 
-test("discovers compact evidence-backed conventions and selects relevant facts", async () => {
+test("discovers compact proof-backed conventions and selects relevant facts", async () => {
   const cwd = await fixture();
   try {
     const profile = await discoverConventions(cwd);
@@ -50,7 +50,7 @@ test("collects usage for competing dependencies in one bounded pass", async () =
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("downgrades cached local conventions when representative evidence disappears", async () => {
+test("downgrades cached local conventions when representative proof disappears", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-conventions-"));
   try {
     await mkdir(join(cwd, "src/lib"), { recursive: true }); await writeFile(join(cwd, "src/lib/retry.ts"), "export {}"); await writeFile(join(cwd, "src/lib/retry-helper.ts"), "export {}");
@@ -69,7 +69,7 @@ test("invalidates only facts backed by a changed source", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("reports a conflicting dependency from strong task-start evidence", async () => {
+test("reports a conflicting dependency from strong task-start proof", async () => {
   const cwd = await fixture();
   try {
     const profile = await discoverConventions(cwd); await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { zod: "1", joi: "1" } }));
@@ -85,6 +85,6 @@ test("blocks a machine-verifiable strong architecture bypass", async () => {
     await mkdir(join(cwd, "src/routes"), { recursive: true }); await writeFile(join(cwd, "src/routes/team.ts"), "import { db } from '../database.js';\n");
     const state = { version: 1, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: { intent: "Add route", acceptanceCriteria: [], constraints: [], explicitPaths: [] }, baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: [{ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sources: [], representatives: [] }], activities: [], findings: [], attempts: 1 } satisfies TaskState;
     const finding = (await inspectConventionDrift(cwd, state, [{ path: "src/routes/team.ts", added: 1, removed: 0 }]))[0];
-    assert.equal(finding?.code, "convention-architecture-bypass"); assert.equal(finding?.blocking, true); assert.deepEqual(finding?.evidence, ["src/routes/team.ts", "architecture.db-access"]);
+    assert.equal(finding?.code, "convention-architecture-bypass"); assert.equal(finding?.blocking, true); assert.deepEqual(finding?.proof, ["src/routes/team.ts", "architecture.db-access"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
