@@ -34,6 +34,14 @@ test("raw proof retention remains bounded", async () => {
   finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("raw failure evidence is never evicted", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-output-failures-"));
+  try {
+    for (let index = 0; index < 105; index++) await storeOutput(cwd, { ...result, exitCode: 1, stdout: String(index) }, "task");
+    assert.equal((await readdir(join(cwd, ".gauntlet/sessions/task/artifacts"))).length, 105);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("raw proof is stored outside task state", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-output-"));
   try { const handle = await storeOutput(cwd, result, "task-1"); assert.match((await new ArtifactStore(cwd).raw(handle)).toString(), /boilerplate[\s\S]*FAIL/); assert.match(handle, /^artifact:\/\/task-1\/t_000001$/); }

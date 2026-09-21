@@ -131,8 +131,7 @@ async function prune(directory: string, current: string): Promise<void> {
   if (values.length < 100) return;
   const records = await Promise.all(values.map(async (item) => { try { return { item, metadata: JSON.parse(await readFile(join(directory, item.name, "metadata.json"), "utf8")) as ArtifactMetadata }; } catch { return { item, metadata: null }; } }));
   const successful = records.filter((record) => record.metadata?.status === "pass");
-  const failures = records.filter((record) => record.metadata?.status !== "pass");
-  const remove = [...successful.slice(0, Math.max(0, successful.length - 99)), ...failures.slice(0, Math.max(0, failures.length - 99))];
+  const remove = successful.slice(0, Math.max(0, successful.length - 99));
   await Promise.all(remove.map((record) => rm(join(directory, record.item.name), { recursive: true, force: true })));
 }
 
