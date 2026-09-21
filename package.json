@@ -12,6 +12,7 @@
     "smoke:install": "node scripts/install-smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "substrate:probe": "node scripts/substrate-probe.mjs",
     "check": "npm run typecheck && npm test"
   },
   "keywords": [],

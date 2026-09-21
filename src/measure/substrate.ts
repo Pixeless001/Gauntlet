@@ -2,6 +2,14 @@ export interface SubstrateDimension { native: string; langgraphPrototype: string
 
 export const LANGGRAPH_PROBE = { package: "@langchain/langgraph", version: "1.4.16", transition: 2, checkpoint: 2, dependencyDirectories: 16, temporary: true, retained: true } as const;
 
+// Recorded sample of `npm run substrate:probe` (win32, Node 24, 2026-09-21).
+export const SUBSTRATE_MEASUREMENTS = {
+  recordedAt: "2026-09-21",
+  reproduce: "npm run substrate:probe",
+  native: { importMs: 0, firstInvokeMs: 0.05, warmInvokeWithCheckpointMs: 1.1, dependencyDirs: 0, nodeModulesMB: 0 },
+  langgraph: { importMs: 819.5, compileMs: 3.1, firstInvokeMs: 30.7, warmInvokeMs: 19.6, checkpointReadbackOk: true, dependencyDirs: 15, nodeModulesMB: 59 },
+} as const;
+
 export const SUBSTRATE_COMPARISON: Record<string, SubstrateDimension> = {
   dependencyFootprint: { native: "no runtime dependency", langgraphPrototype: "external package and transitive dependency tree" },
   sourceComplexity: { native: "small explicit execution boundary", langgraphPrototype: "state annotation, graph, checkpoint configuration" },
@@ -20,5 +28,6 @@ export const SUBSTRATE_COMPARISON: Record<string, SubstrateDimension> = {
 };
 
 export function substrateProof(): string[] {
-  return ["selected: native", "langgraph: disposable non-shipping prototype", `langgraph probe: ${LANGGRAPH_PROBE.package}@${LANGGRAPH_PROBE.version} transition=${LANGGRAPH_PROBE.transition} checkpoint=${LANGGRAPH_PROBE.checkpoint}`, ...Object.entries(SUBSTRATE_COMPARISON).map(([dimension, result]) => `${dimension}: native=${result.native}; langgraph=${result.langgraphPrototype}`)];
+  const m = SUBSTRATE_MEASUREMENTS;
+  return ["selected: native", "langgraph: disposable non-shipping prototype", `langgraph probe: ${LANGGRAPH_PROBE.package}@${LANGGRAPH_PROBE.version} transition=${LANGGRAPH_PROBE.transition} checkpoint=${LANGGRAPH_PROBE.checkpoint}`, `measured ${m.recordedAt} (${m.reproduce}): native import=${m.native.importMs}ms invoke+warm-checkpoint=${m.native.warmInvokeWithCheckpointMs}ms deps=${m.native.dependencyDirs}dirs; langgraph import=${m.langgraph.importMs}ms warm-invoke=${m.langgraph.warmInvokeMs}ms deps=${m.langgraph.dependencyDirs}dirs/${m.langgraph.nodeModulesMB}MB`, ...Object.entries(SUBSTRATE_COMPARISON).map(([dimension, result]) => `${dimension}: native=${result.native}; langgraph=${result.langgraphPrototype}`)];
 }
