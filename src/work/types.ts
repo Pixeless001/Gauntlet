@@ -10,10 +10,14 @@ export interface WorldFingerprint {
   contract: string;
   files: Record<string, string>;
   packages: Record<string, string>;
+  config: Record<string, string>;
+  upstream: Record<string, string>;
   rules: string;
   runtime: string;
   value: string;
 }
+
+export type WorldFingerprintInputs = Omit<WorldFingerprint, "value">;
 
 export interface WorldFact {
   id: string;

@@ -41,6 +41,14 @@ test("rule and package fingerprint changes stale only their explicit dependants"
   assert.equal(refreshed.work.nodes.api?.state, "STALE"); assert.equal(refreshed.work.nodes.unrelated?.state, "READY"); assert.equal(refreshed.decision.valid, false);
 });
 
+test("config and upstream changes stale only their explicit dependants", () => {
+  let work = createGraph(); work = addNode(work, { id: "config", title: "Read config", kind: "inspection", validityInputs: ["config:tsconfig.json"] }); work = addNode(work, { id: "upstream", title: "Use upstream", kind: "inspection", validityInputs: ["upstream:work:build"] }); work = addNode(work, { id: "unrelated", title: "Unrelated", kind: "inspection" });
+  let validity = createValidityGraph(); for (const node of Object.values(work.nodes)) validity = addValidityEdges(validity, node);
+  const world = { ...createWorld(contract("Inspect source.ts"), "base", { ...inputs, config: { "tsconfig.json": "old" }, upstream: { "work:build": "one" } }), work, validity };
+  const changed = refreshValidityInputs(world, { ...world.fingerprint, config: { "tsconfig.json": "new" }, upstream: { "work:build": "two" } }, "base");
+  assert.equal(changed.work.nodes.config?.state, "STALE"); assert.equal(changed.work.nodes.upstream?.state, "STALE"); assert.equal(changed.work.nodes.unrelated?.state, "READY");
+});
+
 test("capability changes invalidate action menus and dynamic work requires primary admission", () => {
   const world = initializeWork(createWorld(contract("Change source.ts"), null, inputs)), changed = refreshCapabilities(world, ["host:worktree"]);
   assert.equal(changed.decision.valid, false); assert.throws(() => selectDecisionNode(changed, "implementation"), /stale/);

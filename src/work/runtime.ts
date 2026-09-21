@@ -26,7 +26,7 @@ export function observeWorldActivity(world: CurrentValidWorld, activity: TaskAct
   const files = activity.kind === "file_write" && Object.hasOwn(invalidated.fingerprint.files, activity.target)
     ? { ...invalidated.fingerprint.files, [activity.target]: observedHash ?? `${invalidated.fingerprint.files[activity.target]}:${activity.outcome ?? "unknown"}` }
     : invalidated.fingerprint.files;
-  const refreshed = refreshWorld(invalidated, { contract: invalidated.fingerprint.contract, files, packages: invalidated.fingerprint.packages, rules: invalidated.fingerprint.rules, runtime: invalidated.fingerprint.runtime }, invalidated.canonicalRevision);
+  const refreshed = refreshWorld(invalidated, { contract: invalidated.fingerprint.contract, files, packages: invalidated.fingerprint.packages, config: invalidated.fingerprint.config, upstream: invalidated.fingerprint.upstream, rules: invalidated.fingerprint.rules, runtime: invalidated.fingerprint.runtime }, invalidated.canonicalRevision);
   const facts = {
     ...refreshed.facts,
     [source]: { id: source, provenance: source, statement: `${activity.kind} observed for ${activity.target}`, evidenceRefs: [activity.artifactRef, activity.proofRef].filter((item): item is string => Boolean(item)), fingerprint: `${refreshed.fingerprint.value}:${activity.outcome ?? "unknown"}`, version: (refreshed.facts[source]?.version ?? 0) + 1, status: "validated" as const },

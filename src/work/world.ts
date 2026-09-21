@@ -1,26 +1,29 @@
 import type { TaskContract } from "../core/events.js";
 import { createCommunicationGraph, createGraph, createValidityGraph, fingerprint, invalidateCone, invalidateDecision } from "./graph.js";
-import type { CurrentValidWorld, WorldFingerprint } from "./types.js";
+import type { CurrentValidWorld, WorldFingerprint, WorldFingerprintInputs } from "./types.js";
 
-export function createWorld(contract: TaskContract, canonicalRevision: string | null, inputs: Omit<WorldFingerprint, "value">): CurrentValidWorld {
-  const fingerprintValue = fingerprint(inputs);
+type PartialWorldFingerprintInputs = Omit<WorldFingerprintInputs, "config" | "upstream"> & Partial<Pick<WorldFingerprintInputs, "config" | "upstream">>;
+const normalizeInputs = (inputs: PartialWorldFingerprintInputs): WorldFingerprintInputs => ({ ...inputs, config: inputs.config ?? {}, upstream: inputs.upstream ?? {} });
+
+export function createWorld(contract: TaskContract, canonicalRevision: string | null, inputs: PartialWorldFingerprintInputs): CurrentValidWorld {
+  const normalized = normalizeInputs(inputs), fingerprintValue = fingerprint(normalized);
   return {
     version: 1, revision: 1, contractVersion: 1, contract, expectedScope: [...contract.expectedFrontier], canonicalRevision,
-    fingerprint: { ...inputs, value: fingerprintValue }, facts: {}, work: createGraph(), validity: createValidityGraph(), communication: createCommunicationGraph(), uncertainties: [], rules: [], legalActions: ["read", "write", "verify"], capabilities: [], ownership: {}, evidenceRefs: [],
+    fingerprint: { ...normalized, value: fingerprintValue }, facts: {}, work: createGraph(), validity: createValidityGraph(), communication: createCommunicationGraph(), uncertainties: [], rules: [], legalActions: ["read", "write", "verify"], capabilities: [], ownership: {}, evidenceRefs: [],
     decision: { revision: 1, fingerprint: fingerprintValue, candidates: [], valid: false }, appliedEvent: 0,
   };
 }
 
-export function refreshWorld(world: CurrentValidWorld, inputs: Omit<WorldFingerprint, "value">, canonicalRevision: string | null): CurrentValidWorld {
-  const value = fingerprint(inputs);
+export function refreshWorld(world: CurrentValidWorld, inputs: PartialWorldFingerprintInputs, canonicalRevision: string | null): CurrentValidWorld {
+  const normalized = normalizeInputs(inputs), value = fingerprint(normalized);
   if (value === world.fingerprint.value && canonicalRevision === world.canonicalRevision) return world;
-  return invalidateDecision({ ...world, revision: world.revision + 1, canonicalRevision, fingerprint: { ...inputs, value } });
+  return invalidateDecision({ ...world, revision: world.revision + 1, canonicalRevision, fingerprint: { ...normalized, value } });
 }
 
-export function refreshValidityInputs(world: CurrentValidWorld, inputs: Omit<WorldFingerprint, "value">, canonicalRevision: string | null): CurrentValidWorld {
-  const sources = changedSources(world.fingerprint, inputs, world.canonicalRevision, canonicalRevision); let next = world;
+export function refreshValidityInputs(world: CurrentValidWorld, inputs: PartialWorldFingerprintInputs, canonicalRevision: string | null): CurrentValidWorld {
+  const normalized = normalizeInputs(inputs), sources = changedSources(world.fingerprint, normalized, world.canonicalRevision, canonicalRevision); let next = world;
   for (const source of sources) next = invalidateCone(next, source).world;
-  return refreshWorld(next, inputs, canonicalRevision);
+  return refreshWorld(next, normalized, canonicalRevision);
 }
 
 export function refreshCapabilities(world: CurrentValidWorld, capabilities: string[]): CurrentValidWorld {
@@ -45,5 +48,7 @@ function changedSources(current: WorldFingerprint, next: Omit<WorldFingerprint, 
   if (currentRevision !== nextRevision) sources.push("revision");
   for (const path of new Set([...Object.keys(current.files), ...Object.keys(next.files)])) if (current.files[path] !== next.files[path]) sources.push(`file:${path}`);
   for (const name of new Set([...Object.keys(current.packages), ...Object.keys(next.packages)])) if (current.packages[name] !== next.packages[name]) sources.push(`package:${name}`);
+  for (const path of new Set([...Object.keys(current.config), ...Object.keys(next.config)])) if (current.config[path] !== next.config[path]) sources.push(`config:${path}`);
+  for (const id of new Set([...Object.keys(current.upstream), ...Object.keys(next.upstream)])) if (current.upstream[id] !== next.upstream[id]) sources.push(`upstream:${id}`);
   return sources;
 }
