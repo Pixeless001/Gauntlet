@@ -10,6 +10,7 @@ import { migrateTaskV2 } from "./v2-migration.js";
 import { ArtifactStore } from "../output/store.js";
 import { GraphEventStore } from "../work/event-store.js";
 import type { GraphEvent } from "../work/types.js";
+import { fingerprint as worldFingerprint } from "../work/graph.js";
 
 export class StateStore {
   readonly directory: string;
@@ -35,7 +36,7 @@ export class StateStore {
     if (state.id !== id || resolve(state.repository) !== this.repository) throw new Error("Invalid Gauntlet task state");
     const checkpoint = await new GraphEventStore(this.repository).resume(id), replay = Boolean(checkpoint && checkpoint.sequence > state.world.appliedEvent);
     if (replay) state = parseTaskState(normalizeWorld({ ...state, world: checkpoint!.world }));
-    if ((raw as { version?: unknown })?.version !== 3 || replay) await this.atomicWrite(path, state);
+    if ((raw as { version?: unknown })?.version !== 3 || replay || JSON.stringify(raw) !== JSON.stringify(state)) await this.atomicWrite(path, state);
     return state;
   }
   async updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState> {
@@ -72,8 +73,12 @@ function normalizeWorld(value: unknown): unknown {
   const task = value as Record<string, unknown>, world = task.world;
   if (!world || typeof world !== "object") return task;
   const current = world as Record<string, unknown>, contract = task.contract as { expectedFrontier?: unknown } | undefined;
-  if ("contract" in current && "expectedScope" in current) return task;
-  return { ...task, world: { ...current, ...("contract" in current ? {} : { contract: task.contract }), ...("expectedScope" in current ? {} : { expectedScope: Array.isArray(contract?.expectedFrontier) ? contract.expectedFrontier : [] }) } };
+  const stored = current.fingerprint && typeof current.fingerprint === "object" ? current.fingerprint as Record<string, unknown> : null;
+  const fingerprint = stored && (!("config" in stored) || !("upstream" in stored)) ? (() => {
+    const inputs = { contract: String(stored.contract ?? ""), files: stored.files as Record<string, string>, packages: stored.packages as Record<string, string>, config: stored.config as Record<string, string> ?? {}, upstream: stored.upstream as Record<string, string> ?? {}, rules: String(stored.rules ?? ""), runtime: String(stored.runtime ?? "") };
+    return { ...inputs, value: worldFingerprint(inputs) };
+  })() : stored;
+  return { ...task, world: { ...current, ...("contract" in current ? {} : { contract: task.contract }), ...("expectedScope" in current ? {} : { expectedScope: Array.isArray(contract?.expectedFrontier) ? contract.expectedFrontier : [] }), ...(fingerprint ? { fingerprint } : {}) } };
 }
 
 async function importStoredReferences(repository: string, taskId: string, value: unknown): Promise<unknown> {

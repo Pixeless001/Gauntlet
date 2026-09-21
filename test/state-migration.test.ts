@@ -12,6 +12,7 @@ import { StateStore } from "../src/state/store.js";
 import { ConventionCache } from "../src/repo/conventions.js";
 import { PatternStore } from "../src/knowledge/patterns.js";
 import { createHash } from "node:crypto";
+import { taskState } from "./support.js";
 
 const exec = promisify(execFile);
 
@@ -44,6 +45,16 @@ test("stored pre-world V3 sessions gain their exact task contract without losing
     const value = { ...parseTaskState(migrateTaskV2(migrateTaskV1({ version: 1, id: "task", repository: cwd, startedAt: new Date(0).toISOString(), contract: { intent: "Change source.ts", acceptanceCriteria: [], explicitPaths: ["source.ts"], constraints: [] }, baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], activities: [], findings: [], attempts: 1 }))), version: 3 as const };
     const legacyWorld = { ...value.world } as Record<string, unknown>; delete legacyWorld.contract; delete legacyWorld.expectedScope; await mkdir(join(cwd, ".gauntlet", "tasks"), { recursive: true }); await writeFile(join(cwd, ".gauntlet", "tasks", "task.json"), JSON.stringify({ ...value, world: legacyWorld }));
     const restored = await new StateStore(cwd).loadTask("task"); assert.equal(restored.world.contract.intent, "Change source.ts"); assert.deepEqual(restored.world.expectedScope, value.contract.expectedFrontier);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("stored V3 worlds gain new fingerprint inputs with a valid revision", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-world-fingerprint-"));
+  try {
+    const store = new StateStore(cwd), value = taskState("Change source.ts"); value.repository = cwd;
+    const legacy = JSON.parse(JSON.stringify(value)) as Record<string, unknown>, world = legacy.world as { fingerprint: Record<string, unknown> };
+    delete world.fingerprint.config; delete world.fingerprint.upstream; world.fingerprint.value = "legacy"; await mkdir(join(cwd, ".gauntlet", "tasks"), { recursive: true }); await writeFile(join(cwd, ".gauntlet", "tasks", "task.json"), JSON.stringify(legacy));
+    const loaded = await store.loadTask("task"); assert.deepEqual(loaded.world.fingerprint.config, {}); assert.deepEqual(loaded.world.fingerprint.upstream, {}); assert.notEqual(loaded.world.fingerprint.value, "legacy");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
