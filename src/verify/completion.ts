@@ -4,13 +4,14 @@ import type { UncertaintyState } from "../control/uncertainty.js";
 import { unresolved } from "../control/uncertainty.js";
 import type { ProofKind } from "./proof-selector.js";
 import type { CurrentValidWorld } from "../work/types.js";
-import { decisionIsFresh } from "../work/graph.js";
+import { decisionIsFresh, fingerprint } from "../work/graph.js";
 
 export interface CompletionDecision { status: "complete" | "incomplete" | "semantic-verification-required"; reasons: string[]; missingInvariants?: string[]; missingProof: ProofKind[]; proofRefs?: string[] }
 
 export function decideCompletion(contract: TaskContract, findings: Finding[], uncertainty: UncertaintyState, supplied: ProofKind[], world?: CurrentValidWorld): CompletionDecision {
   const available = new Set(supplied), missingProof = requiredPreservationProof(contract).filter((kind) => !available.has(kind));
   const material = unresolved(uncertainty).filter((kind) => kind !== "visual" && kind !== "performance" || requiredPreservationProof(contract).includes(kind === "visual" ? "browser" : "measurement"));
+  const worldFingerprintMatches = !world || (() => { const { value, ...inputs } = world.fingerprint; return fingerprint(inputs) === value; })();
   const reasons = [
     ...findings.filter((item) => item.blocking ?? item.severity === "error").map((item) => item.message),
     ...material.map((kind) => `unresolved ${kind}`),
@@ -18,6 +19,8 @@ export function decideCompletion(contract: TaskContract, findings: Finding[], un
     ...(world ? Object.values(world.work.nodes).filter((node) => node.required && !["VALIDATED", "COLLAPSED"].includes(node.state)).map((node) => `required node ${node.id} is ${node.state.toLowerCase()}`) : []),
     ...(world?.facts ? Object.values(world.facts).filter((fact) => fact.status === "stale").map((fact) => `stale fact ${fact.id}`) : []),
     ...(world && !decisionIsFresh(world) ? ["action menu is stale"] : []),
+    ...(world && Object.keys(world.ownership).length ? ["write ownership remains active"] : []),
+    ...(world && !worldFingerprintMatches ? ["world fingerprint is inconsistent"] : []),
   ];
   const semantic = world && Object.values(world.work.nodes).some((node) => node.state === "CANDIDATE" && (node.candidate?.unresolved.length ?? 0) > 0);
   const missingInvariants = [...new Set(reasons)], proofRefs = [...new Set([...findings.flatMap((finding) => finding.proof), ...(world?.evidenceRefs ?? [])])];
