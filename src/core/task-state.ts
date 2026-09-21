@@ -15,6 +15,9 @@ import type { ProgressStatus } from "../execution-state/progress.js";
 import type { ProofKind } from "../verify/proof-selector.js";
 import { assessRisk } from "./risk.js";
 import type { RepositoryRule } from "../repo/rules.js";
+import { createWorld } from "../work/world.js";
+import { fingerprint } from "../work/graph.js";
+import type { CurrentValidWorld } from "../work/types.js";
 
 export interface FileDelta { path: string; added: number; removed: number }
 export interface TestSignature { assertions: string[]; skipped: number }
@@ -65,7 +68,7 @@ export interface ControlState {
 }
 
 export interface TaskState {
-  version: 2;
+  version: 3;
   id: string;
   repository: string;
   startedAt: string;
@@ -81,6 +84,7 @@ export interface TaskState {
   findings: Finding[];
   attempts: number;
   control: ControlState;
+  world: CurrentValidWorld;
 }
 
 const stringList = (max: number, length = 500) => z.array(z.string().max(length)).max(max);
@@ -113,12 +117,25 @@ const controlSchema = z.object({
   execution: z.object({ activeCheckpointId: z.string(), checkpoints: z.array(checkpointSchema).max(500), events: z.array(executionEventSchema).max(1_000), nextEvent: z.number().int().nonnegative() }),
 });
 
+const candidateSchema = z.object({ nodeId: z.string(), attempt: z.number().int().positive(), executor: z.enum(["primary", "local", "worker", "verifier"]), inputFingerprint: z.string(), claims: stringList(200), artifactRefs: stringList(200), evidenceRefs: stringList(200), affectedPaths: stringList(200), unresolved: z.array(z.enum(uncertaintyKinds)).max(20), patchRef: z.string().optional(), baseRevision: z.string().optional() });
+const workNodeSchema = z.object({ id: z.string(), title: z.string(), kind: z.enum(["implementation", "inspection", "evidence", "verification", "local"]), executor: z.enum(["primary", "local", "worker", "verifier"]), required: z.boolean(), state: z.enum(["BLOCKED", "READY", "RUNNING", "CANDIDATE", "VALIDATED", "REJECTED", "STALE", "COLLAPSED"]), attempt: z.number().int().positive(), duration: z.enum(["tiny", "short", "meaningful", "long"]), dependencies: stringList(200), validityInputs: stringList(200), writePaths: stringList(200), resolves: z.array(z.enum(uncertaintyKinds)).max(20), evidenceRefs: stringList(200), candidate: candidateSchema.optional(), rejection: z.object({ constraint: z.string(), evidenceRef: z.string().optional() }).optional(), collapsedRef: z.string().optional(), criticalPath: z.number().nonnegative() });
+const worldSchema = z.object({
+  version: z.literal(1), revision: z.number().int().positive(), contractVersion: z.number().int().positive(), canonicalRevision: z.string().nullable(),
+  fingerprint: z.object({ contract: z.string(), files: z.record(z.string(), z.string()), packages: z.record(z.string(), z.string()), rules: z.string(), runtime: z.string(), value: z.string() }),
+  facts: z.record(z.string(), z.object({ id: z.string(), statement: z.string(), evidenceRefs: stringList(200), fingerprint: z.string(), version: z.number().int().positive(), status: z.enum(["validated", "stale"]) })),
+  work: z.object({ version: z.number().int().positive(), nodes: z.record(z.string(), workNodeSchema) }),
+  validity: z.object({ version: z.number().int().positive(), edges: z.array(z.object({ from: z.string(), to: z.string() })).max(1_000) }),
+  communication: z.object({ version: z.number().int().positive(), edges: z.array(z.object({ from: z.string(), to: z.string() })).max(1_000) }),
+  ownership: z.record(z.string(), stringList(200)), evidenceRefs: stringList(500),
+  decision: z.object({ revision: z.number().int().positive(), fingerprint: z.string(), candidates: stringList(500), valid: z.boolean() }), appliedEvent: z.number().int().nonnegative(),
+});
+
 export const taskStateSchema = z.object({
-  version: z.literal(2), id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/), repository: z.string().min(1), startedAt: z.string().datetime(), contract: taskContractSchema,
+  version: z.literal(3), id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/), repository: z.string().min(1), startedAt: z.string().datetime(), contract: taskContractSchema,
   clarifications: z.array(z.object({ question: z.string().max(1_000), answer: z.string().max(2_000), at: z.string().datetime() })).max(1),
   baseline: z.object({ head: z.string().nullable(), status: stringList(1_000), dependencies: stringList(1_000), files: z.record(z.string(), z.object({ hash: z.string(), lineHashes: stringList(100_000) })), tests: z.record(z.string(), z.object({ assertions: stringList(10_000), skipped: z.number().int().nonnegative() })), publicExports: z.record(z.string(), stringList(500)).optional(), index: z.unknown().optional() }),
   workingSet: stringList(500), repositoryFacts: z.array(z.unknown()).max(500), conventions: z.array(z.unknown()).max(100).optional(), rules: z.array(z.unknown()).max(100).optional(), conventionMetrics: z.object({ hints: z.number(), primitives: z.number(), interventions: z.number(), dependencyConflicts: z.number(), duplicates: z.number(), architectureBypasses: z.number() }).optional(),
-  activities: z.array(activitySchema.omit({ toolPayload: true })).max(1_000), findings: z.array(z.object({ code: z.string(), severity: z.enum(["info", "warning", "error"]), blocking: z.boolean().optional(), message: z.string(), proof: stringList(200) })).max(500), attempts: z.number().int().positive(), control: controlSchema,
+  activities: z.array(activitySchema.omit({ toolPayload: true })).max(1_000), findings: z.array(z.object({ code: z.string(), severity: z.enum(["info", "warning", "error"]), blocking: z.boolean().optional(), message: z.string(), proof: stringList(200) })).max(500), attempts: z.number().int().positive(), control: controlSchema, world: worldSchema,
 });
 
 export function createControlState(contract: TaskContract, rootId = "task-root", activeSkills: SkillName[] = []): ControlState {
@@ -136,4 +153,8 @@ export function createControlState(contract: TaskContract, rootId = "task-root",
 
 export function parseTaskState(value: unknown): TaskState {
   return taskStateSchema.parse(value) as TaskState;
+}
+
+export function createTaskWorld(contract: TaskContract, canonicalRevision: string | null = null): CurrentValidWorld {
+  return createWorld(contract, canonicalRevision, { contract: fingerprint(contract), files: {}, packages: {}, rules: "", runtime: "native" });
 }

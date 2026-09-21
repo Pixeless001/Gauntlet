@@ -6,6 +6,7 @@ import type { TaskMeasurement } from "../core/measure.js";
 import { MAX_STATE_BYTES } from "../core/policy.js";
 import { migrateTaskV1 } from "./v1-migration.js";
 import { migrateLegacyKeys } from "./v1-migration.js";
+import { migrateTaskV2 } from "./v2-migration.js";
 import { ArtifactStore } from "../output/store.js";
 
 export class StateStore {
@@ -26,10 +27,11 @@ export class StateStore {
     try { raw = JSON.parse(content); } catch { throw new Error("Invalid Gauntlet task state"); }
     let migrated = migrateTaskV1(raw);
     if ((raw as { version?: unknown })?.version === 1) migrated = await importStoredReferences(this.repository, id, migrated);
+    migrated = migrateTaskV2(migrated);
     let state: TaskState;
     try { state = parseTaskState(migrated); } catch { throw new Error("Invalid Gauntlet task state"); }
     if (state.id !== id || resolve(state.repository) !== this.repository) throw new Error("Invalid Gauntlet task state");
-    if ((raw as { version?: unknown })?.version === 1) await this.atomicWrite(path, state);
+    if ((raw as { version?: unknown })?.version !== 3) await this.atomicWrite(path, state);
     return state;
   }
   async updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState> {

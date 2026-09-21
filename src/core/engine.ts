@@ -10,7 +10,7 @@ import { detectAmbiguity, extractContract } from "./intent.js";
 import { measure, type TaskMeasurement } from "./measure.js";
 import { STEERING_POLICY } from "./steer.js";
 import type { TaskActivity } from "./events.js";
-import { createControlState, type TaskState } from "./task-state.js";
+import { createControlState, createTaskWorld, type TaskState } from "./task-state.js";
 import { StateStore } from "../state/store.js";
 import { deriveFacts } from "../repo/memory.js";
 import { compact, shouldCompact, type ContinuationRecord } from "./compact.js";
@@ -97,7 +97,7 @@ export class GauntletEngine {
     control.uncertainty = uncertainty;
     control.budget = budget;
     control.capabilities = this.registry.all().map((item) => ({ kind: item.kind, source: item.source, available: item.available }));
-    const state: TaskState = { version: 2, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, clarifications: [], baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, rules: compileRules(conventions), conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control };
+    const state: TaskState = { version: 3, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, clarifications: [], baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, rules: compileRules(conventions), conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control, world: createTaskWorld(contract, baseline.head) };
     const runtime = controlRuntime(state, { trigger: "task_start", candidates: [...skillCandidates(contract, "start", risk.level), ...domainCandidates(profile, contract)] }), activation = runtime.plan;
     const activeSkills = activation.skills.flatMap((candidate) => candidate.skill ? [candidate.skill] : []);
     control.activeSkills = activeSkills.slice(0, 1); control.interventionsUsed = control.activeSkills.length;

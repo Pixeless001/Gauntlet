@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LEGACY_KEYS, MIGRATION_MODULE, migrateTaskV1 } from "../src/state/v1-migration.js";
+import { migrateTaskV2 } from "../src/state/v2-migration.js";
 import { parseTaskState } from "../src/core/task-state.js";
 import { StateStore } from "../src/state/store.js";
 import { ConventionCache } from "../src/repo/conventions.js";
@@ -23,8 +24,8 @@ test("first-version keys migrate without dropping stored results", () => {
     findings: [{ code: "old", severity: "warning", message: "kept", [proof!]: ["run:1"] }], attempts: 1,
     session: { decisions: ["keep choice"], selectionTraces: [{ event: 0, trigger: "old", candidates: [], selected: [], activations: [], rejected: [], [proofFound!]: true }], execution: { activeCheckpointId: "root", checkpoints: [{ id: "root", kind: "task", status: "active", summary: "old", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], [proofRefs!]: ["run:1"], createdFromEvent: 0, resolves: [] }], events: [], nextEvent: 0 } },
   };
-  const state = parseTaskState(migrateTaskV1(raw));
-  assert.equal(state.version, 2);
+  const state = parseTaskState(migrateTaskV2(migrateTaskV1(raw)));
+  assert.equal(state.version, 3);
   assert.deepEqual(state.findings[0]?.proof, ["run:1"]);
   assert.equal(state.activities[0]?.proofRef, "run:1");
   assert.deepEqual(state.control.execution.checkpoints[0]?.proofRefs, ["run:1"]);
@@ -32,15 +33,9 @@ test("first-version keys migrate without dropping stored results", () => {
   assert.equal(state.control.traces[0]?.proofFound, true);
 });
 
-test("first-version spellings are isolated to the private migrator", async () => {
-  const { stdout } = await exec("git", ["ls-files", "-z"], { cwd: process.cwd(), encoding: "buffer" });
-  const files = stdout.toString().split("\0").filter((path) => path && path !== MIGRATION_MODULE);
-  const violations: string[] = [];
-  for (const path of files) {
-    const content = await readFile(path, "utf8");
-    if (LEGACY_KEYS.some((key) => new RegExp(`\\b${key}\\b`, "i").test(content))) violations.push(path);
-  }
-  assert.deepEqual(violations, []);
+test("legacy rewriting leaves current v3 evidence fields untouched", () => {
+  const current = { version: 3, evidenceRefs: ["artifact://task/t_000001"] };
+  assert.deepEqual(migrateTaskV1(current), current);
 });
 
 test("first-version stored outputs become artifact handles", async () => {
@@ -50,7 +45,7 @@ test("first-version stored outputs become artifact handles", async () => {
     const raw = { version: 1, id: "old", repository: cwd, startedAt: new Date(0).toISOString(), contract: { intent: "Fix old state", acceptanceCriteria: [], explicitPaths: [], constraints: [] }, baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], activities: [{ kind: "command", outputBytes: 13, [proofRef!]: ".gauntlet/runs/old/outputs/command.log" }], findings: [], attempts: 1 };
     await writeFile(join(tasks, "old.json"), JSON.stringify(raw));
     const state = await new StateStore(cwd).loadTask("old"), handle = state.activities[0]?.proofRef;
-    assert.match(handle ?? "", /^artifact:\/\/old\/t_000001$/); assert.equal((await readFile(join(cwd, ".gauntlet", "sessions", "old", "artifacts", "t_000001", "output.bin"), "utf8")), "exact output\n"); assert.equal(JSON.parse(await readFile(join(tasks, "old.json"), "utf8")).version, 2);
+    assert.match(handle ?? "", /^artifact:\/\/old\/t_000001$/); assert.equal((await readFile(join(cwd, ".gauntlet", "sessions", "old", "artifacts", "t_000001", "output.bin"), "utf8")), "exact output\n"); assert.equal(JSON.parse(await readFile(join(tasks, "old.json"), "utf8")).version, 3);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

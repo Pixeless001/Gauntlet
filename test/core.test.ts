@@ -4,7 +4,7 @@ import { extractContract, detectAmbiguity } from "../src/core/intent.js";
 import { compact, shouldCompact } from "../src/core/compact.js";
 import { measure } from "../src/core/measure.js";
 import { loopFinding } from "../src/core/guard.js";
-import { createControlState, type TaskState } from "../src/core/task-state.js";
+import { createControlState, createTaskWorld, type TaskState } from "../src/core/task-state.js";
 import { StateStore } from "../src/state/store.js";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 const state = (): TaskState => {
   const contract = { ...extractContract("Fix race"), acceptanceCriteria: ["No duplicate refresh"], constraints: ["Preserve API"], preservationRequirements: ["Preserve API"] };
-  return { version: 2, id: "task", repository: "/repo", startedAt: "2026-01-01T00:00:00.000Z", contract, clarifications: [], baseline: { head: "a", status: [], dependencies: [], files: {}, tests: {} }, workingSet: ["src/session.ts"], repositoryFacts: [], activities: [], findings: [], attempts: 1, control: createControlState(contract) };
+  return { version: 3, id: "task", repository: "/repo", startedAt: "2026-01-01T00:00:00.000Z", contract, clarifications: [], baseline: { head: "a", status: [], dependencies: [], files: {}, tests: {} }, workingSet: ["src/session.ts"], repositoryFacts: [], activities: [], findings: [], attempts: 1, control: createControlState(contract), world: createTaskWorld(contract, "a") };
 };
 
 test("extracts task paths, criteria, and constraints", () => {
@@ -121,7 +121,7 @@ test("state loading atomically migrates first-version control defaults", async (
     value.repository = cwd;
     const legacy = { ...value, version: 1, session: { currentApproach: "", decisions: [], resolvedIssues: [], unresolvedIssues: [], failedApproaches: [], activeSkills: [], lastCompactedActivity: 0, compactions: 0, budget: value.control.budget } };
     delete (legacy as { control?: unknown }).control; await mkdir(join(cwd, ".gauntlet/tasks"), { recursive: true }); await writeFile(join(cwd, ".gauntlet/tasks/task.json"), JSON.stringify(legacy));
-    const loaded = await store.loadTask("task"); assert.deepEqual(loaded.control.observations, []); assert.equal(loaded.version, 2);
+    const loaded = await store.loadTask("task"); assert.deepEqual(loaded.control.observations, []); assert.equal(loaded.version, 3);
     assert.equal(loaded.control.execution.checkpoints[0]?.kind, "task"); assert.equal(loaded.control.execution.activeCheckpointId, "task-root");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

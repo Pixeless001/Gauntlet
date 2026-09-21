@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ConventionCache, discoverConventions, selectConventionFacts } from "../src/repo/conventions.js";
 import { inspectConventionDrift } from "../src/verify/convention-drift.js";
-import { createControlState, type TaskState } from "../src/core/task-state.js";
+import { createControlState, createTaskWorld, type TaskState } from "../src/core/task-state.js";
 import { contract } from "./support.js";
 import { actionableRules, compileRules } from "../src/repo/rules.js";
 
@@ -75,7 +75,7 @@ test("reports a conflicting dependency from strong task-start proof", async () =
   const cwd = await fixture();
   try {
     const profile = await discoverConventions(cwd); await writeFile(join(cwd, "package.json"), JSON.stringify({ dependencies: { zod: "1", joi: "1" } }));
-    const taskContract = contract("validation"); const state = { version: 2, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: ["zod"], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: profile.facts, conventionMetrics: { hints: 1, primitives: 1, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control: createControlState(taskContract) } satisfies TaskState;
+    const taskContract = contract("validation"); const state = { version: 3, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: ["zod"], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: profile.facts, conventionMetrics: { hints: 1, primitives: 1, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control: createControlState(taskContract), world: createTaskWorld(taskContract) } satisfies TaskState;
     const findings = await inspectConventionDrift(cwd, state, [{ path: "package.json", added: 1, removed: 1 }]);
     assert.equal(findings[0]?.code, "convention-dependency-conflict");
   } finally { await rm(cwd, { recursive: true, force: true }); }
@@ -85,7 +85,7 @@ test("blocks a machine-verifiable strong architecture bypass", async () => {
   const cwd = await fixture();
   try {
     await mkdir(join(cwd, "src/routes"), { recursive: true }); await writeFile(join(cwd, "src/routes/team.ts"), "import { db } from '../database.js';\n");
-    const taskContract = contract("Add route"); const state = { version: 2, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: [{ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sourceRefs: [], representatives: [] }], activities: [], findings: [], attempts: 1, control: createControlState(taskContract) } satisfies TaskState;
+    const taskContract = contract("Add route"); const state = { version: 3, id: "x", repository: cwd, startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], conventions: [{ id: "architecture.db-access", category: "architecture", value: "routes → services → repositories", strength: "strong", scope: ".", sourceRefs: [], representatives: [] }], activities: [], findings: [], attempts: 1, control: createControlState(taskContract), world: createTaskWorld(taskContract) } satisfies TaskState;
     const finding = (await inspectConventionDrift(cwd, state, [{ path: "src/routes/team.ts", added: 1, removed: 0 }]))[0];
     assert.equal(finding?.code, "convention-architecture-bypass"); assert.equal(finding?.blocking, true); assert.deepEqual(finding?.proof, ["src/routes/team.ts", "architecture.db-access"]);
   } finally { await rm(cwd, { recursive: true, force: true }); }

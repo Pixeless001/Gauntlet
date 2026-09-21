@@ -4,10 +4,10 @@ import { capabilityCandidates, requiredCapabilities } from "../src/control/capab
 import { planActivation } from "../src/control/selector.js";
 import { compactBrowserProof } from "../src/context/browser.js";
 import { createDelegatedTask, verifyDelegatedResult } from "../src/execution-state/delegation.js";
-import { createControlState, type TaskState } from "../src/core/task-state.js";
+import { createControlState, createTaskWorld, type TaskState } from "../src/core/task-state.js";
 import { contract } from "./support.js";
 
-const task = (): TaskState => { const taskContract = contract("Fix README typo", { explicitPaths: ["README.md"], expectedFrontier: ["README.md"] }); return { version: 2, id: "x", repository: "/repo", startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: ["README.md"], repositoryFacts: [], activities: [], findings: [], attempts: 1, control: createControlState(taskContract) }; };
+const task = (): TaskState => { const taskContract = contract("Fix README typo", { explicitPaths: ["README.md"], expectedFrontier: ["README.md"] }); return { version: 3, id: "x", repository: "/repo", startedAt: new Date().toISOString(), contract: taskContract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: ["README.md"], repositoryFacts: [], activities: [], findings: [], attempts: 1, control: createControlState(taskContract), world: createTaskWorld(taskContract) }; };
 
 test("expensive capabilities stay silent without matching uncertainty", () => { assert.deepEqual(requiredCapabilities(task()), []); });
 test("visual uncertainty selects browser without selecting delegation", () => { const value = task(); value.control!.uncertainty!.visual = "open"; assert.deepEqual(requiredCapabilities(value).map((item) => item.kind), ["browser"]); });

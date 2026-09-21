@@ -24,10 +24,11 @@ export function migrateLegacyKeys(value: unknown): unknown {
 }
 
 export function migrateTaskV1(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  const original = input as Record<string, unknown>;
+  if (original.version !== 1) return original;
   const migrated = migrateLegacyKeys(input);
-  if (!migrated || typeof migrated !== "object") return migrated;
   const value = migrated as Record<string, unknown>;
-  if (value.version !== 1) return value;
   const oldContract = value.contract && typeof value.contract === "object" ? value.contract as Record<string, unknown> : {};
   const intent = typeof oldContract.intent === "string" ? oldContract.intent : "";
   const contract = { ...extractContract(intent), ...oldContract, intent };

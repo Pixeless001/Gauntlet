@@ -11,7 +11,7 @@ import { assessScope } from "../intelligence/scope.js";
 import { compileRules } from "../repo/rules.js";
 import { decideCompletion } from "../verify/completion.js";
 import { requiredCapabilities } from "../control/capabilities.js";
-import { createControlState, type TaskState } from "../core/task-state.js";
+import { createControlState, createTaskWorld, type TaskState } from "../core/task-state.js";
 import { boundaryDecision } from "../control/runtime.js";
 
 export function runIntelligenceEvals(): EvalResult[] {
@@ -40,7 +40,7 @@ export function runIntelligenceEvals(): EvalResult[] {
 
 function task(intent: string): TaskState {
   const contract = extractContract(intent), control = createControlState(contract);
-  return { version: 2, id: "eval", repository: process.cwd(), startedAt: new Date(0).toISOString(), contract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: contract.explicitPaths, repositoryFacts: [], activities: [], findings: [], attempts: 1, control };
+  return { version: 3, id: "eval", repository: process.cwd(), startedAt: new Date(0).toISOString(), contract, clarifications: [], baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: contract.explicitPaths, repositoryFacts: [], activities: [], findings: [], attempts: 1, control, world: createTaskWorld(contract) };
 }
 
 function point(id: string, kind: ExecutionCheckpoint["kind"], status: ExecutionCheckpoint["status"]): ExecutionCheckpoint { return { id, kind, status, summary: id, constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] }; }
