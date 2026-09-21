@@ -1,7 +1,7 @@
 import type { GauntletEvent } from "../core/events.js";
 import { z } from "zod";
 
-export const harnessNameSchema = z.enum(["codex", "claude-code", "cursor"]);
+export const harnessNameSchema = z.enum(["codex", "claude-code", "cursor", "opencode"]);
 export type HarnessName = z.infer<typeof harnessNameSchema>;
 export interface HarnessCapabilities {
   skills: { supported: boolean; dynamicLoad: boolean };
@@ -10,6 +10,7 @@ export interface HarnessCapabilities {
   delegation: { supported: boolean; callback: boolean; modelSelection: boolean };
   telemetry: { tokens: boolean; cost: boolean };
   environment: { worktrees: boolean; sandbox: boolean };
+  execution: { cancellation: boolean };
   output: { replacement: "general" | "feedback" | "mcp" | "none"; preventsInitialContextCost: boolean };
   compaction: { hooks: boolean };
 }

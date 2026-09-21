@@ -12,9 +12,16 @@ import { contract } from "./support.js";
 const inputs = { contract: "contract", files: {}, packages: {}, rules: "rules", runtime: "native" };
 const result = (nodeId: string, attempt = 1) => ({ nodeId, attempt, executor: "local" as const, inputFingerprint: "world", claims: [], artifactRefs: [], evidenceRefs: [], affectedPaths: [], unresolved: [] });
 
-test("native engine batches independent local work and serializes overlapping writes", async () => {
+test("native engine batches local reads and serializes mutation without isolation", async () => {
   let graph = createGraph(); graph = addNode(graph, { id: "a", title: "a", kind: "local", executor: "local", writePaths: ["a.ts"] }); graph = addNode(graph, { id: "b", title: "b", kind: "local", executor: "local", writePaths: ["a.ts"] }); graph = addNode(graph, { id: "c", title: "c", kind: "local", executor: "local", writePaths: ["c.ts"] });
   const started: string[] = [], engine = new NativeExecutionEngine(process.cwd(), async (node) => { started.push(node.id); return result(node.id); }, 4);
+  assert.deepEqual((await engine.runReady(Object.values(graph.nodes))).map((item) => item.nodeId), ["a"]);
+  assert.deepEqual(started, ["a"]);
+});
+
+test("native engine permits disjoint isolated writes and only one worker", async () => {
+  let graph = createGraph(); graph = addNode(graph, { id: "a", title: "a", kind: "local", executor: "worker", writePaths: ["a.ts"] }); graph = addNode(graph, { id: "b", title: "b", kind: "local", executor: "worker", writePaths: ["b.ts"] }); graph = addNode(graph, { id: "c", title: "c", kind: "local", writePaths: ["c.ts"] });
+  const started: string[] = [], engine = new NativeExecutionEngine(process.cwd(), async (node) => { started.push(node.id); return result(node.id); }, 4, { isolatedMutation: true });
   assert.deepEqual((await engine.runReady(Object.values(graph.nodes))).map((item) => item.nodeId).sort(), ["a", "c"]);
   assert.deepEqual(started.sort(), ["a", "c"]);
 });
@@ -25,6 +32,6 @@ test("native engine checkpoints and graph events resume locally", async () => {
     const world = createWorld(contract("Inspect source.ts"), null, inputs), engine = new NativeExecutionEngine(cwd, async (node) => result(node.id));
     await engine.checkpoint("task", world); assert.deepEqual(await engine.resume("task"), world);
     const events = new GraphEventStore(cwd), event = await events.append("task", { at: new Date().toISOString(), type: "NODE_CREATED", nodeId: "inspect" }, world);
-    assert.equal(event.sequence, 1); assert.deepEqual((await events.read("task")).map((item) => item.type), ["NODE_CREATED"]); assert.deepEqual((await events.resume("task"))?.world, world);
+    assert.equal(event.sequence, 1); assert.deepEqual((await events.read("task")).map((item) => item.type), ["NODE_CREATED"]); assert.deepEqual((await events.resume("task"))?.world, { ...world, appliedEvent: 1 });
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });

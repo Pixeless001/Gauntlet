@@ -17,6 +17,7 @@ export interface WorldFingerprint {
 
 export interface WorldFact {
   id: string;
+  provenance: string;
   statement: string;
   evidenceRefs: string[];
   fingerprint: string;
@@ -36,6 +37,7 @@ export interface CandidateResult {
   unresolved: UncertaintyKind[];
   patchRef?: string;
   baseRevision?: string;
+  approachFingerprint?: string;
 }
 
 export interface WorkNode {
@@ -53,7 +55,7 @@ export interface WorkNode {
   resolves: UncertaintyKind[];
   evidenceRefs: string[];
   candidate?: CandidateResult;
-  rejection?: { constraint: string; evidenceRef?: string };
+  rejection?: { constraint: string; evidenceRef?: string; approachFingerprint?: string };
   collapsedRef?: string;
   criticalPath: number;
 }
@@ -75,12 +77,18 @@ export interface CurrentValidWorld {
   version: 1;
   revision: number;
   contractVersion: number;
+  contract: TaskContract;
+  expectedScope: string[];
   canonicalRevision: string | null;
   fingerprint: WorldFingerprint;
   facts: Record<string, WorldFact>;
   work: WorkGraph;
   validity: ValidityGraph;
   communication: CommunicationGraph;
+  uncertainties: UncertaintyKind[];
+  rules: string[];
+  legalActions: string[];
+  capabilities: string[];
   ownership: Record<string, string[]>;
   evidenceRefs: string[];
   decision: DecisionSnapshot;
@@ -111,6 +119,8 @@ export interface GraphEvent {
   nodeId?: string;
   detail?: string;
   fingerprint?: string;
+  attempt?: number;
+  candidate?: CandidateResult;
 }
 
 export interface ExecutionEngine {

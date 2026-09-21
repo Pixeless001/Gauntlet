@@ -1,4 +1,4 @@
-export type EvalCategory = "routing" | "behavior" | "enforcement" | "context" | "verification" | "overhead" | "domain" | "portability" | "execution-state" | "intelligence" | "selection" | "memory";
+export type EvalCategory = "routing" | "behavior" | "enforcement" | "context" | "verification" | "overhead" | "domain" | "portability" | "execution-state" | "intelligence" | "selection" | "memory" | "orchestration";
 export interface EvalResult {
   category: EvalCategory; caseId: string; passed: boolean; durationMs: number; interventions: number; extraModelCalls: number;
   contextItems: number; repeatedReads: number; rawOutputBytes: number; conditionedOutputBytes: number; proof: string[];

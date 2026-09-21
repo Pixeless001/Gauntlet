@@ -3,18 +3,21 @@ import type { Finding } from "../core/events.js";
 import type { UncertaintyState } from "../control/uncertainty.js";
 import { unresolved } from "../control/uncertainty.js";
 import type { ProofKind } from "./proof-selector.js";
+import type { CurrentValidWorld } from "../work/types.js";
 
-export interface CompletionDecision { status: "complete" | "incomplete"; reasons: string[]; missingProof: ProofKind[] }
+export interface CompletionDecision { status: "complete" | "incomplete" | "semantic-verification-required"; reasons: string[]; missingProof: ProofKind[] }
 
-export function decideCompletion(contract: TaskContract, findings: Finding[], uncertainty: UncertaintyState, supplied: ProofKind[]): CompletionDecision {
+export function decideCompletion(contract: TaskContract, findings: Finding[], uncertainty: UncertaintyState, supplied: ProofKind[], world?: CurrentValidWorld): CompletionDecision {
   const available = new Set(supplied), missingProof = requiredPreservationProof(contract).filter((kind) => !available.has(kind));
   const material = unresolved(uncertainty).filter((kind) => kind !== "visual" && kind !== "performance" || requiredPreservationProof(contract).includes(kind === "visual" ? "browser" : "measurement"));
   const reasons = [
     ...findings.filter((item) => item.blocking ?? item.severity === "error").map((item) => item.message),
     ...material.map((kind) => `unresolved ${kind}`),
     ...missingProof.map((kind) => `missing preservation ${kind}`),
+    ...(world ? Object.values(world.work.nodes).filter((node) => node.required && !["VALIDATED", "COLLAPSED"].includes(node.state)).map((node) => `required node ${node.id} is ${node.state.toLowerCase()}`) : []),
   ];
-  return { status: reasons.length ? "incomplete" : "complete", reasons: [...new Set(reasons)], missingProof: [...new Set(missingProof)] };
+  const semantic = world && Object.values(world.work.nodes).some((node) => node.state === "CANDIDATE" && (node.candidate?.unresolved.length ?? 0) > 0);
+  return { status: semantic ? "semantic-verification-required" : reasons.length ? "incomplete" : "complete", reasons: [...new Set(reasons)], missingProof: [...new Set(missingProof)] };
 }
 
 export function requiredPreservationProof(contract: TaskContract): ProofKind[] {

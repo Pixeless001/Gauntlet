@@ -8,6 +8,8 @@ import { migrateTaskV1 } from "./v1-migration.js";
 import { migrateLegacyKeys } from "./v1-migration.js";
 import { migrateTaskV2 } from "./v2-migration.js";
 import { ArtifactStore } from "../output/store.js";
+import { GraphEventStore } from "../work/event-store.js";
+import type { GraphEvent } from "../work/types.js";
 
 export class StateStore {
   readonly directory: string;
@@ -27,14 +29,26 @@ export class StateStore {
     try { raw = JSON.parse(content); } catch { throw new Error("Invalid Gauntlet task state"); }
     let migrated = migrateTaskV1(raw);
     if ((raw as { version?: unknown })?.version === 1) migrated = await importStoredReferences(this.repository, id, migrated);
-    migrated = migrateTaskV2(migrated);
+    migrated = normalizeWorld(migrateTaskV2(migrated));
     let state: TaskState;
     try { state = parseTaskState(migrated); } catch { throw new Error("Invalid Gauntlet task state"); }
     if (state.id !== id || resolve(state.repository) !== this.repository) throw new Error("Invalid Gauntlet task state");
-    if ((raw as { version?: unknown })?.version !== 3) await this.atomicWrite(path, state);
+    const checkpoint = await new GraphEventStore(this.repository).resume(id), replay = Boolean(checkpoint && checkpoint.sequence > state.world.appliedEvent);
+    if (replay) state = parseTaskState(normalizeWorld({ ...state, world: checkpoint!.world }));
+    if ((raw as { version?: unknown })?.version !== 3 || replay) await this.atomicWrite(path, state);
     return state;
   }
   async updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState> {
+    return this.withTaskLock(id, async () => { const state = await this.loadTask(id); update(state); await this.saveTask(state); return state; });
+  }
+  async updateTaskWithWorldEvent(id: string, update: (state: TaskState) => Omit<GraphEvent, "sequence"> | Omit<GraphEvent, "sequence">[] | null): Promise<TaskState> {
+    return this.withTaskLock(id, async () => {
+      const state = await this.loadTask(id), event = update(state), events = event ? (Array.isArray(event) ? event : [event]) : [];
+      for (const item of events) state.world.appliedEvent = (await new GraphEventStore(this.repository).append(id, item, state.world)).sequence;
+      await this.saveTask(state); return state;
+    });
+  }
+  private async withTaskLock<T>(id: string, run: () => Promise<T>): Promise<T> {
     const lock = `${this.taskPath(id)}.lock`;
     for (let attempt = 0; ; attempt++) {
       try { await mkdir(lock); await writeFile(join(lock, "owner"), `${process.pid}\n${Date.now()}\n`); break; } catch (error) {
@@ -43,7 +57,7 @@ export class StateStore {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
     }
-    try { const state = await this.loadTask(id); update(state); await this.saveTask(state); return state; }
+    try { return await run(); }
     finally { await rm(lock, { recursive: true, force: true }); }
   }
   async saveMeasurement(value: TaskMeasurement) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); }
@@ -51,6 +65,13 @@ export class StateStore {
     const path = join(this.directory, "last-result.json");
     try { const raw = JSON.parse(await readFile(path, "utf8")), migrated = migrateLegacyKeys(raw) as TaskMeasurement; if (!migrated || typeof migrated !== "object" || typeof migrated.taskId !== "string") return null; if (JSON.stringify(raw) !== JSON.stringify(migrated)) await this.atomicWrite(path, migrated); return migrated; } catch { return null; }
   }
+}
+
+function normalizeWorld(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const task = value as Record<string, unknown>, world = task.world;
+  if (!world || typeof world !== "object" || "contract" in world) return task;
+  return { ...task, world: { ...(world as Record<string, unknown>), contract: task.contract } };
 }
 
 async function importStoredReferences(repository: string, taskId: string, value: unknown): Promise<unknown> {

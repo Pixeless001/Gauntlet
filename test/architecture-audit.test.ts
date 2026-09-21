@@ -8,7 +8,7 @@ import { ARCHITECTURE_AUDIT, summarizeArchitectureAudit, validateAuditProof, typ
 test("architecture audit proves every mandatory product capability", async () => {
   const summary = summarizeArchitectureAudit(), issues = await validateAuditProof(process.cwd());
   assert.equal(new Set(ARCHITECTURE_AUDIT.map((item) => item.id)).size, ARCHITECTURE_AUDIT.length);
-  assert.equal(summary.total, 12); assert.equal(summary.mandatory, 12); assert.equal(summary.releaseReady, true); assert.deepEqual(summary.blocking, []); assert.deepEqual(issues, []);
+  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, true); assert.deepEqual(summary.blocking, []); assert.deepEqual(issues, []);
   assert.ok(ARCHITECTURE_AUDIT.every((item) => item.acceptance && item.implementation.length && item.tests.length && !item.gap));
 });
 

@@ -38,7 +38,7 @@ test("validity invalidation stales only the dependency cone and communication st
   for (const id of ["api", "dependent", "unrelated"]) { work = startNode(work, id); work = proposeResult(work, candidate(id)); work = validateNode(work, id); }
   let validity = createValidityGraph(); validity = addValidityEdges(validity, work.nodes.api!); validity = addValidityEdges(validity, work.nodes.dependent!);
   let communication = createCommunicationGraph(); communication = addCommunicationEdge(communication, "api", "reducer");
-  const world = { ...createWorld(contract("Inspect API"), null, inputs), work, validity, communication, facts: { "package:api": { id: "package:api", statement: "API v1", evidenceRefs: [], fingerprint: "v1", version: 1, status: "validated" as const } } };
+  const world = { ...createWorld(contract("Inspect API"), null, inputs), work, validity, communication, facts: { "package:api": { id: "package:api", provenance: "package:api", statement: "API v1", evidenceRefs: [], fingerprint: "v1", version: 1, status: "validated" as const } } };
   const result = invalidateCone(world, "package:api");
   assert.deepEqual(result.stale.sort(), ["api", "dependent"]);
   assert.equal(result.world.work.nodes.unrelated?.state, "VALIDATED");

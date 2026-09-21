@@ -7,6 +7,7 @@ import { install, installationStatus, uninstall } from "../src/adapters/install.
 import { codexAdapter } from "../src/adapters/codex/index.js";
 import { claudeCodeAdapter } from "../src/adapters/claude-code/index.js";
 import { cursorAdapter } from "../src/adapters/cursor/index.js";
+import { opencodeAdapter } from "../src/adapters/opencode/index.js";
 
 test("adapter translates native events and rejects foreign events", () => {
   const event = codexAdapter.translate({ hook_event_name: "UserPromptSubmit", session_id: "1", cwd: "/repo", prompt: "fix" });
@@ -23,6 +24,7 @@ test("adapters publish individually testable capabilities", () => {
   assert.deepEqual([claudeCodeAdapter.capabilities.output.replacement, codexAdapter.capabilities.output.replacement, cursorAdapter.capabilities.output.replacement], ["general", "feedback", "mcp"]);
   assert.equal(codexAdapter.capabilities.output.preventsInitialContextCost, false);
   assert.ok([claudeCodeAdapter, codexAdapter, cursorAdapter].every((item) => item.capabilities.compaction.hooks));
+  assert.equal(opencodeAdapter.capabilities.lifecycle.beforeStop, false); assert.equal(opencodeAdapter.capabilities.compaction.hooks, false); assert.equal(opencodeAdapter.capabilities.output.replacement, "none");
 });
 
 test("adapter records semantic file and command activity", () => {
@@ -72,8 +74,17 @@ test("Cursor installation uses its native lower-camel event schema", async () =>
 test("installation creates each native configuration directory and reports exact status", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-hosts-"));
   try {
-    await Promise.all([install(cwd, "codex"), install(cwd, "claude-code"), install(cwd, "cursor")]); const status = await installationStatus(cwd);
+    await Promise.all([install(cwd, "codex"), install(cwd, "claude-code"), install(cwd, "cursor"), install(cwd, "opencode")]); const status = await installationStatus(cwd);
     assert.equal(status.codex.path, join(cwd, ".codex/hooks.json")); assert.equal(status["claude-code"].path, join(cwd, ".claude/settings.json")); assert.equal(status.cursor.path, join(cwd, ".cursor/hooks.json"));
+    assert.equal(status.opencode.path, join(cwd, ".opencode/plugin/gauntlet.js"));
     assert.equal(Object.values(status).every((item) => item.installed), true);
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("OpenCode plugin translates local tool events without inventing stop hooks", async () => {
+  const event = opencodeAdapter.translate({ sessionID: "abc", cwd: "/repo", tool: "bash", args: { command: "npm test" }, result: { exit_code: 0 } }, "tool.execute.after");
+  assert.equal(event.type, "task_activity"); if (event.type === "task_activity") assert.equal(event.activity.target, "npm test");
+  assert.throws(() => opencodeAdapter.translate({}, "session.idle"), /Unsupported native hook event/);
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-opencode-"));
+  try { const target = await install(cwd, "opencode"); assert.match(await readFile(target, "utf8"), /--gauntlet-managed/); await uninstall(cwd, "opencode"); await assert.rejects(readFile(target)); } finally { await rm(cwd, { recursive: true, force: true }); }
 });

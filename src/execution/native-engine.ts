@@ -2,15 +2,16 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { CandidateResult, CurrentValidWorld, ExecutionEngine, WorkNode } from "../work/types.js";
+import { scheduleReady, type SchedulerCapabilities } from "../work/scheduler.js";
 
 export type NativeNodeExecutor = (node: WorkNode, signal: AbortSignal) => Promise<CandidateResult>;
 
 export class NativeExecutionEngine implements ExecutionEngine {
   private readonly controllers = new Map<string, AbortController>();
-  constructor(private readonly cwd: string, private readonly execute: NativeNodeExecutor, private readonly concurrency = 4) {}
+  constructor(private readonly cwd: string, private readonly execute: NativeNodeExecutor, private readonly concurrency = 4, private readonly capabilities: Partial<SchedulerCapabilities> = {}) {}
 
   async runReady(nodes: WorkNode[], signal?: AbortSignal): Promise<CandidateResult[]> {
-    const selected = selectIndependent(nodes, Math.max(1, this.concurrency));
+    const selected = scheduleReady(nodes, { isolatedMutation: this.capabilities.isolatedMutation ?? false, maxLocal: Math.max(1, this.concurrency), maxWorkers: 1 });
     const results = await Promise.allSettled(selected.map(async (node) => {
       const controller = new AbortController(); this.controllers.set(node.id, controller);
       const abort = () => controller.abort(); signal?.addEventListener("abort", abort, { once: true });
@@ -36,14 +37,4 @@ export class NativeExecutionEngine implements ExecutionEngine {
     try { return JSON.parse(await readFile(join(this.cwd, ".gauntlet", "sessions", taskId, "native-checkpoint.json"), "utf8")) as CurrentValidWorld; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
   }
-}
-
-function selectIndependent(nodes: WorkNode[], limit: number): WorkNode[] {
-  const claimed = new Set<string>(), selected: WorkNode[] = [];
-  for (const node of nodes) {
-    if (selected.length >= limit) break;
-    if (node.writePaths.some((path) => claimed.has(path))) continue;
-    selected.push(node); for (const path of node.writePaths) claimed.add(path);
-  }
-  return selected;
 }

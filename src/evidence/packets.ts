@@ -25,9 +25,10 @@ export interface VerificationView {
 }
 
 export function compileWorkerPacket(state: TaskState, node: WorkNode): WorkerPacket {
+  const permitted = new Set(state.world.communication.edges.filter((edge) => edge.to === node.id).map((edge) => edge.from));
   return {
     objective: node.title,
-    knownFacts: Object.values(state.world.facts).filter((fact) => fact.status === "validated").map((fact) => fact.statement).slice(0, 16),
+    knownFacts: Object.values(state.world.facts).filter((fact) => fact.status === "validated" && (fact.provenance === "contract" || permitted.has(fact.provenance))).map((fact) => fact.statement).slice(0, 16),
     inputs: communicationEvidence(state.world, node.id), preserve: [...state.contract.preservationRequirements], rules: (state.rules ?? []).map((rule) => rule.id).slice(0, 8),
     authority: node.writePaths.length ? "write" : "read-only", ownership: [...node.writePaths], acceptance: [...state.contract.acceptanceCriteria], requiredEvidence: [...node.evidenceRefs], returnSchema: "CandidateResult",
   };

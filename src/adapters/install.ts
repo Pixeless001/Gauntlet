@@ -5,10 +5,12 @@ import type { HarnessAdapter, HarnessName } from "./types.js";
 import { codexAdapter } from "./codex/index.js";
 import { claudeCodeAdapter } from "./claude-code/index.js";
 import { cursorAdapter } from "./cursor/index.js";
+import { opencodeAdapter } from "./opencode/index.js";
+import { opencodePluginSource } from "./opencode/plugin.js";
 
 type JsonObject = Record<string, unknown>;
 type Hook = Record<string, unknown> & { command?: string };
-const adapters: Record<HarnessName, HarnessAdapter> = { codex: codexAdapter, "claude-code": claudeCodeAdapter, cursor: cursorAdapter };
+const adapters: Record<HarnessName, HarnessAdapter> = { codex: codexAdapter, "claude-code": claudeCodeAdapter, cursor: cursorAdapter, opencode: opencodeAdapter };
 const marker = "--gauntlet-managed";
 
 export function adapter(name: HarnessName) { return adapters[name]; }
@@ -62,13 +64,16 @@ async function writeConfig(path: string, config: JsonObject): Promise<void> {
 }
 
 export async function install(cwd: string, name: HarnessName, dryRun = false): Promise<string> {
-  const target = join(cwd, adapters[name].configurationPath), config = merge(await readConfig(target), name);
+  const target = join(cwd, adapters[name].configurationPath);
+  if (name === "opencode") { if (!dryRun) { await mkdir(dirname(target), { recursive: true, mode: 0o700 }); await writeFile(target, opencodePluginSource(process.execPath, fileURLToPath(new URL("../cli.js", import.meta.url))), { mode: 0o600 }); } return target; }
+  const config = merge(await readConfig(target), name);
   if (!dryRun) await writeConfig(target, config);
   return target;
 }
 
 export async function uninstall(cwd: string, name: HarnessName, dryRun = false): Promise<string> {
   const target = join(cwd, adapters[name].configurationPath);
+  if (name === "opencode") { if (!dryRun) try { await rm(target); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } return target; }
   try {
     await access(target); const config = removeDefinitions(await readConfig(target));
     const hooks = config.hooks as Record<string, unknown> | undefined;

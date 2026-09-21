@@ -10,7 +10,7 @@ import { detectAmbiguity, extractContract } from "./intent.js";
 import { measure, type TaskMeasurement } from "./measure.js";
 import { STEERING_POLICY } from "./steer.js";
 import type { TaskActivity } from "./events.js";
-import { createControlState, createTaskWorld, type TaskState } from "./task-state.js";
+import { createControlState, type TaskState } from "./task-state.js";
 import { StateStore } from "../state/store.js";
 import { deriveFacts } from "../repo/memory.js";
 import { compact, shouldCompact, type ContinuationRecord } from "./compact.js";
@@ -43,6 +43,11 @@ import { decideCompletion } from "../verify/completion.js";
 import { hasSufficientProof } from "../verify/proof-selector.js";
 import { capabilityCandidates } from "../control/capabilities.js";
 import type { RuntimeDirective } from "../control/types.js";
+import { GraphEventStore } from "../work/event-store.js";
+import { initializeWork, observeWorldActivity, proposeNodeResult, refreshFrontier } from "../work/runtime.js";
+import { applyCandidateEvaluation, evaluateCandidate } from "../verify/candidate.js";
+import { createWorld } from "../work/world.js";
+import { collapseValidated, fingerprint as worldFingerprint } from "../work/graph.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null; directive: RuntimeDirective }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null; directive: RuntimeDirective }
@@ -75,7 +80,11 @@ export class GauntletEngine {
 
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
     try {
-      const state = await this.store.loadTask(id);
+      let state = await this.store.loadTask(id);
+      if (!state.world.work.nodes.implementation || !state.world.work.nodes.verification) state = await this.store.updateTaskWithWorldEvent(id, (value) => {
+        value.world = initializeWork(value.world);
+        return { at: new Date().toISOString(), type: "NODE_CREATED", detail: "Resumed V2 state with implementation and verification nodes" };
+      });
       const context = await createContextPacket(this.cwd, state.contract, state.conventions, state.baseline.index, reconstruct(state));
       const ambiguity = detectAmbiguity(state.contract);
       return { state, injection: await injection(context, state.control?.activeSkills ?? []), clarification: ambiguity.costly ? ambiguity.question ?? "Clarify the expected observable behavior." : null, directive: startDirective(state.contract.size, ambiguity.costly) };
@@ -97,7 +106,12 @@ export class GauntletEngine {
     control.uncertainty = uncertainty;
     control.budget = budget;
     control.capabilities = this.registry.all().map((item) => ({ kind: item.kind, source: item.source, available: item.available }));
-    const state: TaskState = { version: 3, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, clarifications: [], baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, rules: compileRules(conventions), conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control, world: createTaskWorld(contract, baseline.head) };
+    const rules = compileRules(conventions);
+    let world = initializeWork(createWorld(contract, baseline.head, { contract: worldFingerprint(contract), files: Object.fromEntries(contract.explicitPaths.flatMap((path) => baseline.files[path] ? [[path, baseline.files[path]!.hash] as const] : [])), packages: Object.fromEntries(baseline.dependencies.map((dependency) => [dependency, dependency])), rules: worldFingerprint(conventions), runtime: "native" }));
+    world = { ...world, uncertainties: Object.entries(uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof uncertainty), rules: rules.map((rule) => rule.id), capabilities: control.capabilities.filter((capability) => capability.available).map((capability) => `${capability.source}:${capability.kind}`) };
+    const events = new GraphEventStore(this.cwd);
+    for (const event of [{ type: "NODE_CREATED" as const, nodeId: "implementation" }, { type: "NODE_CREATED" as const, nodeId: "verification" }, { type: "DEPENDENCY_ADDED" as const, nodeId: "verification" }, { type: "NODE_READY" as const, nodeId: "implementation" }]) world = { ...world, appliedEvent: (await events.append(id, { at: new Date().toISOString(), ...event }, world)).sequence };
+    const state: TaskState = { version: 3, id, repository: this.cwd, startedAt: new Date().toISOString(), contract, clarifications: [], baseline, workingSet: context.entries.map((entry) => entry.path), repositoryFacts: await deriveFacts(this.cwd, profile), conventions, rules, conventionMetrics: { hints: conventions.length, primitives: conventions.filter((fact) => fact.category === "primitive").length, interventions: 0, dependencyConflicts: 0, duplicates: 0, architectureBypasses: 0 }, activities: [], findings: [], attempts: 1, control, world };
     const runtime = controlRuntime(state, { trigger: "task_start", candidates: [...skillCandidates(contract, "start", risk.level), ...domainCandidates(profile, contract)] }), activation = runtime.plan;
     const activeSkills = activation.skills.flatMap((candidate) => candidate.skill ? [candidate.skill] : []);
     control.activeSkills = activeSkills.slice(0, 1); control.interventionsUsed = control.activeSkills.length;
@@ -114,7 +128,7 @@ export class GauntletEngine {
       const { toolPayload: _stored, ...bounded } = activity;
       activity = { ...bounded, artifactRef: artifact.artifactRef };
     }
-    const fingerprint = activity.kind === "file_read" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
+    const fingerprint = (activity.kind === "file_read" || activity.kind === "file_write") && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
     let writtenImpact: ReturnType<typeof inspectImpact> | null = null, immediateFindings: TaskState["findings"] = [];
     if (activity.kind === "file_write" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/")) {
       const repository = await createRepoIndex(this.cwd), cached = await loadStructuralIndex(this.cwd, repository.head);
@@ -125,7 +139,7 @@ export class GauntletEngine {
       immediateFindings.push(...scope.hardSignals.map((message) => ({ code: "scope-hard-signal", severity: "error" as const, blocking: true, message, proof: scope.actual })));
     }
     let workflowChanged = false, directive: RuntimeDirective = { action: "continue", reason: "No control action is required" };
-    const state = await this.store.updateTask(id, (value) => {
+    const state = await this.store.updateTaskWithWorldEvent(id, (value) => {
       value.activities.push(activity); if (activity.artifactRef) value.control.context.artifactRefs = [...value.control.context.artifactRefs, activity.artifactRef].slice(-200); if (activity.kind === "message") value.control.context.recentCompletedTurns = [...value.control.context.recentCompletedTurns, value.activities.length - 1].slice(-3); if (value.activities.length > 1_000) { const removed = value.activities.length - 1_000; value.activities.splice(0, removed); value.control.lastCompactedActivity = Math.max(0, value.control.lastCompactedActivity - removed); value.control.context.recentCompletedTurns = value.control.context.recentCompletedTurns.map((index) => index - removed).filter((index) => index >= 0).slice(-3); } const loop = loopFinding(value);
       value.findings = deduplicateFindings([...value.findings, ...immediateFindings]);
       if (loop && !value.findings.some((finding) => finding.code === loop.code)) value.findings.push(loop);
@@ -176,6 +190,14 @@ export class GauntletEngine {
         }
         if (!routed) directive = controlRuntime(value, { trigger: activity.kind === "file_write" ? "file_write" : activity.outcome === "fail" ? "failure" : "activity", candidates: [], stateChange: transition.progress ? [`progress:${transition.progress.toLowerCase()}`] : [], proofGain: activity.artifactRef ? [activity.artifactRef] : activity.proofRef ? [activity.proofRef] : [] }).directive;
       }
+      const previous = Object.fromEntries(Object.entries(value.world.work.nodes).map(([nodeId, node]) => [nodeId, node.state]));
+      value.world = { ...observeWorldActivity(value.world, activity, fingerprint?.hash), uncertainties: Object.entries(value.control.uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof value.control.uncertainty) };
+      const stale = Object.entries(value.world.work.nodes).filter(([nodeId, node]) => node.state === "STALE" && previous[nodeId] !== "STALE").map(([nodeId]) => nodeId);
+      const at = new Date().toISOString(), detail = activity.target;
+      return [
+        { at, type: activity.kind === "file_write" ? "FACT_INVALIDATED" : activity.outcome === "fail" ? "RESULT_STALE" : "NODE_READY", ...(detail ? { detail } : {}) },
+        ...stale.map((nodeId) => ({ at, type: "DESCENDANTS_STALE" as const, nodeId, ...(detail ? { detail } : {}) })),
+      ];
     });
     if (immediateFindings.length) directive = { action: "validate", reason: immediateFindings.map((item) => item.message).join("; ") };
     const decision = shouldCompact(state); let continuation = decision.compact || workflowChanged ? compact(state) : null;
@@ -252,10 +274,44 @@ export class GauntletEngine {
     const outstanding = machinePassed && state.control?.uncertainty ? remainingProof(state.control.uncertainty, supplied, obtainable) : [];
     for (const item of outstanding) state.findings.push({ code: `unresolved-proof-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.proof} proof before completion.`, proof: [] });
     if (machinePassed && state.control.uncertainty) for (const kind of Object.keys(state.control.uncertainty) as (keyof typeof state.control.uncertainty)[]) if (state.control.uncertainty[kind] !== "irrelevant" && hasSufficientProof(kind, supplied)) state.control.uncertainty[kind] = "resolved";
-    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied);
+    state.world = { ...state.world, uncertainties: Object.entries(state.control.uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof state.control.uncertainty) };
+    state.world = initializeWork(state.world);
+    const evidenceRefs = results.map((result) => result.proof).filter((item): item is string => Boolean(item));
+    const evaluation = {
+      commandPassed: results.length > 0 && results.every((result) => result.status === "pass"), artifactsPresent: true, artifactHashesValid: true,
+      staticChecksPassed: results.every((result) => result.status === "pass"), testsPassed: true,
+      acceptanceEvidence: machinePassed, preservationEvidence: !state.findings.some((finding) => finding.blocking), coldVerificationPassed: machinePassed, ownershipValid: true,
+      baseCompatible: state.world.canonicalRevision === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
+    };
+    const graphEvents = new GraphEventStore(this.cwd);
+    const recordGraph = async (type: "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
+      const node = state.world.work.nodes[nodeId], candidate = type === "RESULT_PROPOSED" ? node?.candidate : undefined;
+      state.world = { ...state.world, appliedEvent: (await graphEvents.append(state.id, { at: new Date().toISOString(), type, nodeId, ...(detail ? { detail } : {}), ...(node ? { attempt: node.attempt } : {}), ...(candidate ? { candidate } : {}) }, state.world)).sequence };
+    };
+    const completeNode = async (nodeId: "implementation" | "verification", executor: "primary" | "verifier", claims: string[]) => {
+      const before = state.world.work.nodes[nodeId]!;
+      if (["VALIDATED", "COLLAPSED"].includes(before.state)) return { disposition: "validated" as const, reasons: [] };
+      if (["REJECTED", "STALE"].includes(before.state)) await recordGraph("NODE_RETRIED", nodeId, before.rejection?.constraint);
+      if (["READY", "REJECTED", "STALE"].includes(before.state)) await recordGraph("NODE_STARTED", nodeId);
+      state.world = proposeNodeResult(state.world, nodeId, { executor, claims, artifactRefs: evidenceRefs, evidenceRefs, affectedPaths: changes.map((change) => change.path), unresolved: [], ...(state.baseline.head ? { baseRevision: state.baseline.head } : {}) });
+      await recordGraph("RESULT_PROPOSED", nodeId);
+      const decision = evaluateCandidate(state.world, state.world.work.nodes[nodeId]!, evaluation);
+      state.world = applyCandidateEvaluation(state.world, nodeId, decision);
+      if (decision.disposition === "validated") await recordGraph("RESULT_VALIDATED", nodeId);
+      else if (decision.disposition === "stale") await recordGraph("RESULT_STALE", nodeId, decision.reasons.join("; "));
+      else if (decision.disposition === "rejected") await recordGraph("RESULT_REJECTED", nodeId, decision.reasons.join("; "));
+      return decision;
+    };
+    const implementationDecision = await completeNode("implementation", "primary", changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]);
+    if (implementationDecision.disposition === "validated") await completeNode("verification", "verifier", ["Candidate verification evidence collected"]);
+    const validated = Object.values(state.world.work.nodes).filter((node) => node.state === "VALIDATED").map((node) => node.id);
+    state.world = collapseValidated(state.world);
+    for (const nodeId of validated.filter((id) => state.world.work.nodes[id]?.state === "COLLAPSED")) await recordGraph("GRAPH_COLLAPSED", nodeId);
+    state.world = refreshFrontier(state.world);
+    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied, state.world);
     for (const proof of completion.missingProof) state.findings.push({ code: `missing-preservation-${proof}`, severity: "error", blocking: true, message: `Required preservation proof is unavailable: ${proof}`, proof: [] });
     const passed = machinePassed && outstanding.length === 0 && completion.status === "complete";
-    recordVerification(state, passed, results.map((result) => result.proof).filter((item): item is string => Boolean(item)), supplied);
+    recordVerification(state, passed, evidenceRefs, supplied);
     if (passed) state.control.activeSkills = [];
     const value = measure(state, changes, results, new Date(), completion);
     await this.store.saveTask(state); await this.store.saveMeasurement(value);

@@ -68,11 +68,11 @@ export function validateNode(graph: WorkGraph, id: string): WorkGraph {
   return recomputeReady(replaceNode(graph, { ...rest, state: "VALIDATED" }));
 }
 
-export function rejectNode(graph: WorkGraph, id: string, constraint: string, evidenceRef?: string): WorkGraph {
+export function rejectNode(graph: WorkGraph, id: string, constraint: string, evidenceRef?: string, approachFingerprint?: string): WorkGraph {
   const node = requiredNode(graph, id);
   if (node.state !== "CANDIDATE" && node.state !== "RUNNING") throw new Error(`Work node cannot be rejected: ${id}`);
   const { candidate: _candidate, ...rest } = node;
-  return replaceNode(graph, { ...rest, state: "REJECTED", rejection: { constraint, ...(evidenceRef ? { evidenceRef } : {}) } });
+  return replaceNode(graph, { ...rest, state: "REJECTED", rejection: { constraint, ...(evidenceRef ? { evidenceRef } : {}), ...(approachFingerprint ? { approachFingerprint } : {}) } });
 }
 
 export function retryNode(graph: WorkGraph, id: string): WorkGraph {
@@ -127,6 +127,10 @@ export function refreshDecision(world: CurrentValidWorld, candidates: string[]):
 
 export function invalidateDecision(world: CurrentValidWorld): CurrentValidWorld {
   return { ...world, decision: { ...world.decision, valid: false } };
+}
+
+export function decisionIsFresh(world: CurrentValidWorld): boolean {
+  return world.decision.valid && world.decision.revision === world.revision && world.decision.fingerprint === world.fingerprint.value;
 }
 
 export function fingerprint(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }

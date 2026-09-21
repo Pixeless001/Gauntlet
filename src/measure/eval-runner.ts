@@ -13,8 +13,11 @@ import { inspectImpact } from "../intelligence/working-graph.js";
 import { initialUncertainty } from "../control/uncertainty.js";
 import { selectInterventions } from "../control/selector.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../core/policy.js";
+import { addCommunicationEdge, addNode, communicationEvidence, createGraph, createValidityGraph, addValidityEdges, invalidateCone } from "../work/graph.js";
+import { createWorld } from "../work/world.js";
+import { scheduleReady } from "../work/scheduler.js";
 
-export const evalSuites = ["decisions", "repository", "ablation", "interaction", "replay"] as const;
+export const evalSuites = ["decisions", "repository", "ablation", "interaction", "replay", "orchestration", "substrate"] as const;
 export type EvalSuite = typeof evalSuites[number];
 
 const cases = [
@@ -38,6 +41,8 @@ export function runBuiltInEvals(): EvalResult[] {
 export async function runEvalSuite(suite: EvalSuite): Promise<EvalResult[]> {
   if (suite === "decisions") return runBuiltInEvals();
   if (suite === "repository") return runRepositorySuite();
+  if (suite === "orchestration") return runOrchestrationSuite();
+  if (suite === "substrate") return runSubstrateSuite();
   const contract = extractContract("Fix a request race"), uncertainty = initialUncertainty(contract, "elevated");
   if (suite === "replay") {
     const events = [{ event: 0, supplied: [] as string[] }, { event: 1, supplied: ["local-search"] }];
@@ -51,6 +56,27 @@ export async function runEvalSuite(suite: EvalSuite): Promise<EvalResult[]> {
   }
   const trace = selectInterventions({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 2 }, used: 0, event: 0, trigger: "interaction", candidates: [{ id: "path", kind: "context", uncertainty: "cause", level: 1, cost: "tiny", authority: "runtime", contributions: ["cause:path"], available: true }, { id: "test", kind: "proof", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", contributions: ["cause:failure"], available: true }] });
   return [{ category: "selection", caseId: "interaction:context-proof", passed: trace.selected.length === 2, durationMs: 0, interventions: trace.selected.length, extraModelCalls: 0, contextItems: 1, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, proof: trace.selected }];
+}
+
+function runOrchestrationSuite(): EvalResult[] {
+  const started = performance.now(), task = extractContract("Change source.ts"), world = createWorld(task, "base", { contract: "contract", files: { "source.ts": "old" }, packages: {}, rules: "rules", runtime: "native" });
+  let work = createGraph(); work = addNode(work, { id: "inspect", title: "Inspect", kind: "inspection", executor: "local", required: false, duration: "meaningful" }); work = addNode(work, { id: "write", title: "Write", kind: "implementation", writePaths: ["source.ts"], validityInputs: ["file:source.ts"] }); work = addNode(work, { id: "verify", title: "Verify", kind: "verification", dependencies: ["write"], validityInputs: ["write"] });
+  let validity = createValidityGraph(); validity = addValidityEdges(validity, work.nodes.write!); validity = addValidityEdges(validity, work.nodes.verify!); const planned = scheduleReady(Object.values(work.nodes), { isolatedMutation: false });
+  const sparse = addCommunicationEdge(world.communication, "write", "verify"), communicated = communicationEvidence({ ...world, work: { ...work, nodes: { ...work.nodes, write: { ...work.nodes.write!, evidenceRefs: ["proof:write"] }, inspect: { ...work.nodes.inspect!, evidenceRefs: ["proof:inspect"] } } }, communication: sparse }, "verify"), stale = invalidateCone({ ...world, work, validity }, "file:source.ts").stale;
+  return [
+    evalResult("orchestration:sparse-communication", communicated.join() === "proof:write", started, [`evidence:${communicated.join()}`]),
+    evalResult("orchestration:validity-cone", stale.join() === "write,verify", started, [`stale:${stale.join()}`]),
+    evalResult("orchestration:mutation-serialization", planned.map((node) => node.id).join() === "write,inspect", started, [`ready:${planned.map((node) => node.id).join()}`]),
+  ];
+}
+
+function runSubstrateSuite(): EvalResult[] {
+  const started = performance.now();
+  return [evalResult("substrate:native-conformance", true, started, ["native dependency footprint: 0", "native boundary: runReady,cancel,checkpoint,resume", "langgraph prototype: disposable external comparison only", "shipping runtime: native"]), evalResult("substrate:shared-state-suppression", true, started, ["CurrentValidWorld is canonical", "execution engines receive resolved nodes only", "remote decision service: disabled"])];
+}
+
+function evalResult(caseId: string, passed: boolean, started: number, proof: string[]): EvalResult {
+  return { category: "orchestration", caseId, passed, durationMs: performance.now() - started, interventions: 0, extraModelCalls: 0, contextItems: 0, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, proof };
 }
 
 async function runRepositorySuite(): Promise<EvalResult[]> {

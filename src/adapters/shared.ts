@@ -7,6 +7,7 @@ export const hookCapabilities = (failure: boolean, replacement: HarnessCapabilit
   skills: { supported: true, dynamicLoad: true }, lifecycle: { taskStart: true, toolActivity: true, failure, beforeStop: true },
   tools: { shell: true, mcp: false, browser: false }, delegation: { supported: false, callback: false, modelSelection: false },
   telemetry: { tokens: false, cost: false }, environment: { worktrees: false, sandbox: false },
+  execution: { cancellation: false },
   output: { replacement, preventsInitialContextCost: replacement === "general" || replacement === "mcp" }, compaction: { hooks: true },
 });
 
@@ -16,7 +17,7 @@ function record(value: unknown): NativeEvent { return value && typeof value === 
 function text(value: unknown): string | undefined { return typeof value === "string" && value.trim() ? value.trim() : undefined; }
 function activity(value: NativeEvent, repository: string, failed: boolean) {
   const name = String(value.tool_name ?? value.toolName ?? value.tool ?? value.name ?? "tool"), lower = name.toLowerCase();
-  const input = { ...record(value.arguments), ...record(value.input), ...record(value.tool_input) };
+  const input = { ...record(value.arguments), ...record(value.input), ...record(value.tool_input), ...record(value.args) };
   const rawPath = text(input.file_path) ?? text(input.filePath) ?? text(input.path) ?? text(input.notebook_path);
   const path = rawPath ? normalizePath(repository, rawPath) : undefined;
   const command = text(input.command) ?? text(value.command);
@@ -43,7 +44,7 @@ function failedActivity(value: NativeEvent, name: string): boolean {
 }
 
 function taskId(input: NativeEvent, name: string): string {
-  const candidate = input.session_id ?? input.conversation_id ?? process.env.GAUNTLET_TASK_ID;
+  const candidate = input.session_id ?? input.sessionID ?? input.sessionId ?? input.conversation_id ?? process.env.GAUNTLET_TASK_ID;
   if (typeof candidate === "string" && /^native-[a-f0-9]{24}$/.test(candidate)) return candidate;
   if (candidate !== undefined) return `native-${createHash("sha256").update(String(candidate)).digest("hex").slice(0, 24)}`;
   if (name === "sessionStart") return `native-${randomUUID().replaceAll("-", "").slice(0, 24)}`;
@@ -55,8 +56,8 @@ export function translateNativeEvent(input: unknown, nativeEvents: string[], exp
   const name = explicitName ?? String(value.hook_event_name ?? process.env.CURSOR_HOOK_EVENT ?? "");
   if (!nativeEvents.includes(name)) throw new Error(`Unsupported native hook event: ${name || "<missing>"}`);
   const base = { version: 1 as const, taskId: taskId(value, name), repository: typeof value.cwd === "string" ? value.cwd : process.cwd(), timestamp: new Date().toISOString() };
-  if (["UserPromptSubmit", "beforeSubmitPrompt", "sessionStart"].includes(name)) return eventSchema.parse({ ...base, type: "task_start", intent: typeof value.prompt === "string" ? value.prompt : "Coding session" });
-  if (["PostToolUse", "postToolUse", "PostToolUseFailure", "postToolUseFailure"].includes(name)) {
+  if (["UserPromptSubmit", "beforeSubmitPrompt", "sessionStart", "session.created"].includes(name)) return eventSchema.parse({ ...base, type: "task_start", intent: typeof value.prompt === "string" ? value.prompt : "Coding session" });
+  if (["PostToolUse", "postToolUse", "PostToolUseFailure", "postToolUseFailure", "tool.execute.after", "tool.execute.error"].includes(name)) {
     const failed = failedActivity(value, name);
     return eventSchema.parse({ ...base, type: "task_activity", activity: activity(value, base.repository, failed) });
   }

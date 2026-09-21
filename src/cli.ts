@@ -3,6 +3,7 @@ import pc from "picocolors";
 import { detectRepository } from "./repo/detect.js";
 import { install, installationStatus, uninstall } from "./adapters/install.js";
 import { harnessNameSchema } from "./adapters/types.js";
+import { adapter } from "./adapters/install.js";
 import { GauntletEngine } from "./core/engine.js";
 import { formatSummary } from "./reporting/summary.js";
 import { activitySchema } from "./core/events.js";
@@ -19,7 +20,10 @@ const harness = harnessNameSchema.parse(option("--harness") ?? "codex");
 async function main() {
   if (command === "init" || command === "install") console.log(`${args.includes("--dry-run") ? "Would install" : "Installed"} ${harness}: ${await install(cwd, harness, args.includes("--dry-run"))}`);
   else if (command === "uninstall") console.log(`${args.includes("--dry-run") ? "Would remove" : "Removed"} ${await uninstall(cwd, harness, args.includes("--dry-run"))}`);
-  else if (command === "doctor") console.log(JSON.stringify({ repository: await detectRepository(cwd), adapters: await installationStatus(cwd) }, null, 2));
+  else if (command === "doctor") {
+    const adapters = await installationStatus(cwd);
+    console.log(JSON.stringify({ repository: await detectRepository(cwd), state: { root: ".gauntlet", persistence: "jsonl-checkpoint", engine: "native" }, engine: { name: "native", methods: ["runReady", "cancel", "checkpoint", "resume"], remoteDecisionService: false, langgraphRuntime: false }, adapters: Object.fromEntries(harnessNameSchema.options.map((name) => [name, { ...adapters[name], capabilities: adapter(name).capabilities }])) }, null, 2));
+  }
   else if (command === "eval") { const requested = option("--suite"); if (requested && !evalSuites.includes(requested as EvalSuite)) throw new Error(`Invalid evaluation suite: ${requested}`); const suites = requested ? [requested as EvalSuite] : [...evalSuites], results = (await Promise.all(suites.map(runEvalSuite))).flat(); await saveEvalRun(cwd, results); console.log(JSON.stringify({ passed: results.every((item) => item.passed), suites, cases: results }, null, 2)); if (results.some((item) => !item.passed)) process.exitCode = 1; }
   else if (command === "evolve") console.log(JSON.stringify(await runEvolution(cwd, args.includes("--dry-run")), null, 2));
   else if (command === "audit") { const summary = summarizeArchitectureAudit(), proofIssues = await validateAuditProof(cwd); console.log(JSON.stringify({ summary, proofIssues, items: ARCHITECTURE_AUDIT }, null, 2)); if (args.includes("--strict") && (!summary.releaseReady || proofIssues.length)) process.exitCode = 1; }
@@ -34,7 +38,7 @@ async function main() {
   else if (command === "activity") { const id = args[0], json = args[1]; if (!id || !json) throw new Error("Usage: gauntlet activity <task-id> '<json>'"); const result = await new GauntletEngine(cwd).activity(id, activitySchema.parse(JSON.parse(json))); if (result.continuation) console.log(JSON.stringify({ type: "compaction", continuation: result.continuation }, null, 2)); }
   else if (command === "finish") { const id = args[0]; if (!id) throw new Error("Usage: gauntlet finish <task-id>"); console.log(formatSummary(await new GauntletEngine(cwd).finish(id))); }
   else if (command === "hook") { if (args[0] === "auto") await runAutoHook(args[1]); else await runHook(harnessNameSchema.parse(args[0]), args[1]); }
-  else console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite decisions|repository|ablation|interaction|replay]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>`);
+  else console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite decisions|repository|ablation|interaction|replay]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>`);
 }
 
 main().catch((error: unknown) => { console.error(pc.red(error instanceof Error ? error.message : String(error))); process.exitCode = 1; });

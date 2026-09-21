@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { CurrentValidWorld, GraphEvent } from "./types.js";
@@ -9,10 +9,12 @@ export class GraphEventStore {
 
   async append(taskId: string, event: Omit<GraphEvent, "sequence">, world: CurrentValidWorld): Promise<GraphEvent> {
     const directory = this.directory(taskId); await mkdir(directory, { recursive: true, mode: 0o700 });
-    const events = await this.read(taskId), next = { ...event, sequence: (events.at(-1)?.sequence ?? 0) + 1 };
-    await writeAtomic(join(directory, "events.jsonl"), `${[...events, next].map((item) => JSON.stringify(item)).join("\n")}\n`);
-    await writeAtomic(join(directory, "world.json"), `${JSON.stringify({ sequence: next.sequence, world })}\n`);
-    return next;
+    return withLock(join(directory, ".events-lock"), async () => {
+      const events = await this.read(taskId), next = { ...event, sequence: (events.at(-1)?.sequence ?? 0) + 1 };
+      await writeAtomic(join(directory, "events.jsonl"), `${[...events, next].map((item) => JSON.stringify(item)).join("\n")}\n`);
+      await writeAtomic(join(directory, "world.json"), `${JSON.stringify({ sequence: next.sequence, world: { ...world, appliedEvent: next.sequence } })}\n`);
+      return next;
+    });
   }
 
   async read(taskId: string, after = 0): Promise<GraphEvent[]> {
@@ -40,4 +42,17 @@ export class GraphEventStore {
 async function writeAtomic(path: string, value: string): Promise<void> {
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(temporary, value, { mode: 0o600 }); await rename(temporary, path);
+}
+
+async function withLock<T>(lock: string, run: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 250; attempt++) {
+    try { await mkdir(lock); break; } catch (error) {
+      if (!['EEXIST', 'EPERM', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+      try { if (Date.now() - (await stat(lock)).mtimeMs > 30_000) await rm(lock, { recursive: true, force: true }); } catch { /* lock was released */ }
+      await new Promise((done) => setTimeout(done, 20));
+    }
+    if (attempt === 249) throw new Error("Timed out acquiring graph event lock");
+  }
+  try { return await run(); }
+  finally { await rm(lock, { recursive: true, force: true }); }
 }
