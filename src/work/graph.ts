@@ -25,6 +25,14 @@ export function addNode(graph: WorkGraph, input: WorkNodeInput): WorkGraph {
   assertAcyclic(next); return annotateCriticalPath(next);
 }
 
+export function addDependency(graph: WorkGraph, id: string, dependency: string): WorkGraph {
+  const node = requiredNode(graph, id);
+  if (!graph.nodes[dependency]) throw new Error("Work dependency is missing");
+  if (node.dependencies.includes(dependency)) return graph;
+  const next = { version: graph.version + 1, nodes: { ...graph.nodes, [id]: { ...node, dependencies: [...node.dependencies, dependency], state: "BLOCKED" as const } } };
+  assertAcyclic(next); return annotateCriticalPath(next);
+}
+
 export function addValidityEdges(graph: ValidityGraph, node: WorkNode): ValidityGraph {
   const edges = [...graph.edges, ...node.validityInputs.map((from) => ({ from, to: node.id }))];
   return { version: graph.version + 1, edges: uniqueEdges(edges) };

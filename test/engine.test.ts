@@ -45,9 +45,11 @@ test("clean git tasks retain an exact local patch artifact for promotion", async
     await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "source.ts"), "export const value = 1;\n");
     await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
-    const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "patch"); await writeFile(join(cwd, "source.ts"), "export const value = 2;\n"); await writeFile(join(cwd, "new.ts"), "export const added = true;\n"); await engine.finish("patch");
-    const proposed = (await new GraphEventStore(cwd).read("patch")).find((event) => event.type === "RESULT_PROPOSED" && event.nodeId === "implementation")!;
-    assert.ok(proposed.candidate?.patchRef); assert.match((await new ArtifactStore(cwd).raw(proposed.candidate!.patchRef!)).toString(), /-export const value = 1/); assert.match((await new ArtifactStore(cwd).raw(proposed.candidate!.patchRef!)).toString(), /new file mode/);
+    const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "patch"); await writeFile(join(cwd, "source.ts"), "export const value = 2;\n"); await engine.finish("patch");
+    const events = await new GraphEventStore(cwd).read("patch"), proposed = events.find((event) => event.type === "RESULT_PROPOSED" && event.nodeId === "implementation")!;
+    assert.ok(events.some((event) => event.type === "NODE_CREATED" && event.nodeId === "impact-inspection")); assert.ok(events.some((event) => event.type === "DEPENDENCY_ADDED" && event.nodeId === "implementation")); assert.ok(events.some((event) => event.type === "NODE_READY" && event.nodeId === "implementation"));
+    const patch = (await new ArtifactStore(cwd).raw(proposed.candidate!.patchRef!)).toString();
+    assert.ok(proposed.candidate?.patchRef); assert.match(patch, /-export const value = 1/); assert.doesNotMatch(patch, /\.gauntlet/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

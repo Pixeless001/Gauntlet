@@ -45,10 +45,10 @@ import { hasSufficientProof } from "../verify/proof-selector.js";
 import { capabilityCandidates } from "../control/capabilities.js";
 import type { RuntimeDirective } from "../control/types.js";
 import { GraphEventStore } from "../work/event-store.js";
-import { initializeWork, observeWorldActivity, proposeNodeResult, refreshFrontier } from "../work/runtime.js";
+import { admitDiscovery, initializeWork, observeWorldActivity, proposeNodeResult, refreshFrontier } from "../work/runtime.js";
 import { applyCandidateEvaluation, evaluateCandidate } from "../verify/candidate.js";
 import { createWorld } from "../work/world.js";
-import { collapseValidated, fingerprint as worldFingerprint, retryNode, selectDecisionNode } from "../work/graph.js";
+import { addDependency, collapseValidated, fingerprint as worldFingerprint, readyFrontier, retryNode, selectDecisionNode } from "../work/graph.js";
 import { approachFingerprint } from "../work/precheck.js";
 import { NativeExecutionEngine } from "../execution/native-engine.js";
 
@@ -251,8 +251,10 @@ export class GauntletEngine {
       ? await updateStructuralIndex(this.cwd, currentIndex, cachedStructural, codeChanges.map((item) => item.path), 160)
       : await buildStructuralIndex(this.cwd, currentIndex, structuralTargets, 160) : !codeChanges.length ? cachedStructural ?? undefined : undefined;
     if (structural) await saveStructuralIndex(this.cwd, structural);
+    let impactEvidenceRef: string | undefined;
     if (expandGraph && structural) {
       const artifact = await new ArtifactStore(this.cwd).put(state.id, { operation: "inspect-impact", target: structuralTargets.join(","), input: JSON.stringify(structuralTargets), output: JSON.stringify(structural), status: "pass", semanticDescription: "Bounded repository impact inspection", paths: structuralTargets, symbols: [], processor: "json" }, state.activities.length, state.contract.goal, "location, repository fit, regression");
+      impactEvidenceRef = artifact.artifactRef;
       state.control.context.artifactRefs = [...state.control.context.artifactRefs, artifact.artifactRef].slice(-200); beforeStop.decision.proofGain.push(artifact.artifactRef);
     }
     if (expandGraph && structural && state.control) { state.control.graphExpansions = (state.control.graphExpansions ?? 0) + 1; state.control.interventionsUsed = (state.control.interventionsUsed ?? 0) + 1; }
@@ -285,7 +287,7 @@ export class GauntletEngine {
     const patchRef = patch && changes.length
       ? (await new ArtifactStore(this.cwd).put(state.id, { operation: "git diff --binary", target: state.baseline.head ?? undefined, input: state.baseline.head ?? "filesystem", output: patch, status: "pass", semanticDescription: "Task-local candidate patch", paths: changes.map((change) => change.path), symbols: [], processor: "diff" }, state.activities.length, state.contract.goal, "patch applicability and scope")).artifactRef
       : undefined;
-    const evidenceRefs = [...verificationEvidenceRefs, ...(patchRef ? [patchRef] : [])];
+    const evidenceRefs = [...verificationEvidenceRefs, ...(impactEvidenceRef ? [impactEvidenceRef] : []), ...(patchRef ? [patchRef] : [])];
     const artifacts = await Promise.all(evidenceRefs.map(async (ref) => {
       try {
         const store = new ArtifactStore(this.cwd), metadata = await store.metadata(ref), output = await store.raw(ref);
@@ -303,20 +305,26 @@ export class GauntletEngine {
       baseCompatible: state.world.canonicalRevision === state.baseline.head && currentBaseline.head === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
     };
     const graphEvents = new GraphEventStore(this.cwd);
-    const recordGraph = async (type: "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "PATCH_PROMOTED" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
+    const recordGraph = async (type: "NODE_CREATED" | "DEPENDENCY_ADDED" | "NODE_READY" | "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "PATCH_PROMOTED" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
       const node = state.world.work.nodes[nodeId], candidate = type === "RESULT_PROPOSED" ? node?.candidate : undefined;
       state.world = { ...state.world, appliedEvent: (await graphEvents.append(state.id, { at: new Date().toISOString(), type, nodeId, ...(detail ? { detail } : {}), ...(node ? { attempt: node.attempt } : {}), ...(candidate ? { candidate } : {}) }, state.world)).sequence };
     };
+    if (impactEvidenceRef && !state.world.work.nodes["impact-inspection"]) {
+      state.world = admitDiscovery(state.world, { id: "impact-inspection", title: "Inspect material repository impact", kind: "inspection", executor: "local", duration: "short", validityInputs: ["contract"], changes: { scheduling: true, validation: true, invalidation: true } });
+      state.world = refreshFrontier({ ...state.world, revision: state.world.revision + 1, work: addDependency(state.world.work, "implementation", "impact-inspection") });
+      await recordGraph("NODE_CREATED", "impact-inspection", "Impact inspection changed scheduling and invalidation");
+      await recordGraph("DEPENDENCY_ADDED", "implementation", "impact-inspection");
+    }
     const executor = new NativeExecutionEngine(this.cwd, async (node) => {
-      const affectedPaths = node.id === "implementation" ? changes.map((change) => change.path) : [];
+      const affectedPaths = node.id === "implementation" ? changes.map((change) => change.path) : node.kind === "inspection" ? structuralTargets : [];
       return {
         nodeId: node.id, attempt: node.attempt, executor: node.executor, inputFingerprint: state.world.fingerprint.value,
-        claims: node.id === "implementation" ? (changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]) : ["Candidate verification evidence collected"],
+        claims: node.id === "implementation" ? (changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]) : node.kind === "inspection" ? ["Candidate impact inspection recorded"] : ["Candidate verification evidence collected"],
         artifactRefs: evidenceRefs, evidenceRefs, affectedPaths, unresolved: [], ...(patchRef ? { patchRef } : {}), ...(state.baseline.head ? { baseRevision: state.baseline.head } : {}),
         approachFingerprint: approachFingerprint({ mechanism: node.kind, target: affectedPaths.join(",") || node.id, assumptions: state.world.rules }),
       };
     });
-    const completeNode = async (nodeId: "implementation" | "verification") => {
+    const completeNode = async (nodeId: string) => {
       const before = state.world.work.nodes[nodeId]!;
       if (["VALIDATED", "COLLAPSED"].includes(before.state)) return { disposition: "validated" as const, reasons: [] };
       if (["REJECTED", "STALE"].includes(before.state)) {
@@ -339,18 +347,28 @@ export class GauntletEngine {
         return { disposition: "rejected" as const, reasons: [reason] };
       }
       await recordGraph("RESULT_PROPOSED", nodeId);
-      const candidateNode = state.world.work.nodes[nodeId]!, decision = evaluateCandidate(state.world, candidateNode, { ...evaluation, coldVerificationPassed: evaluation.coldVerificationPassed && coldViewHasEvidence(createVerificationView(state, candidateNode)) });
+      const candidateNode = state.world.work.nodes[nodeId]!, inspection = candidateNode.kind === "inspection", nodeEvaluation = inspection
+        ? { ...evaluation, acceptanceEvidence: Boolean(impactEvidenceRef), preservationEvidence: true, coldVerificationPassed: artifacts.every(Boolean), scopeValid: true, rulesValid: true }
+        : evaluation;
+      const decision = evaluateCandidate(state.world, candidateNode, { ...nodeEvaluation, coldVerificationPassed: nodeEvaluation.coldVerificationPassed && coldViewHasEvidence(createVerificationView(state, candidateNode)) });
+      const beforeStates = Object.fromEntries(Object.entries(state.world.work.nodes).map(([id, item]) => [id, item.state]));
       state.world = applyCandidateEvaluation(state.world, nodeId, decision);
       if (decision.disposition === "validated") {
         await recordGraph("RESULT_VALIDATED", nodeId);
+        for (const [readyId, node] of Object.entries(state.world.work.nodes)) if (node.state === "READY" && beforeStates[readyId] !== "READY") await recordGraph("NODE_READY", readyId);
         if (nodeId === "implementation") await recordGraph("PATCH_PROMOTED", nodeId, patchRef ? "Validated task-local patch against the current non-isolated working tree" : "Validated against the current non-isolated working tree");
       }
       else if (decision.disposition === "stale") await recordGraph("RESULT_STALE", nodeId, decision.reasons.join("; "));
       else if (decision.disposition === "rejected") await recordGraph("RESULT_REJECTED", nodeId, decision.reasons.join("; "));
       return decision;
     };
-    const implementationDecision = await completeNode("implementation");
-    if (implementationDecision.disposition === "validated") await completeNode("verification");
+    while (true) {
+      state.world = refreshFrontier(state.world);
+      const next = readyFrontier(state.world)[0];
+      if (!next) break;
+      const decision = await completeNode(next.id);
+      if (decision.disposition !== "validated") break;
+    }
     const validated = Object.values(state.world.work.nodes).filter((node) => node.state === "VALIDATED").map((node) => node.id);
     state.world = collapseValidated(state.world);
     for (const nodeId of validated.filter((id) => state.world.work.nodes[id]?.state === "COLLAPSED")) await recordGraph("GRAPH_COLLAPSED", nodeId);

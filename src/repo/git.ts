@@ -45,7 +45,7 @@ export async function captureBinaryDiff(cwd: string, base: string | null): Promi
   if (tracked.exitCode !== 0) return null;
   const untracked = await git(cwd, ["ls-files", "--others", "--exclude-standard"]);
   if (untracked.exitCode !== 0) return null;
-  const additions = await Promise.all(untracked.stdout.trim().split("\n").filter(Boolean).map(async (path) => {
+  const additions = await Promise.all(untracked.stdout.trim().split("\n").filter((path) => path && !path.startsWith(".gauntlet/")).map(async (path) => {
     const result = await git(cwd, ["diff", "--no-index", "--binary", "--", "/dev/null", path]);
     return result.exitCode === 1 ? result.stdout : "";
   }));

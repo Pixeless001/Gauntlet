@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { detectRepository } from "../src/repo/detect.js";
 import { selectContext } from "../src/repo/context.js";
 import { formatContext } from "../src/core/context.js";
-import { captureBaseline, changedFiles } from "../src/repo/git.js";
+import { captureBaseline, captureBinaryDiff, changedFiles } from "../src/repo/git.js";
 import { createRepoIndex } from "../src/repo/index.js";
 import { run } from "../src/repo/process.js";
 import type { ActiveExecutionContext } from "../src/execution-state/reconstruct.js";
@@ -37,6 +37,13 @@ test("includes untracked files in the implementation footprint", () => fixture(a
   await writeFile(join(cwd, "base.txt"), "base\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd); const baseline = await captureBaseline(cwd);
   await writeFile(join(cwd, "new.ts"), "one\ntwo\n");
   assert.deepEqual(await changedFiles(cwd, baseline), [{ path: "new.ts", added: 3, removed: 0 }]);
+}));
+
+test("binary candidate patches include untracked files", () => fixture(async (cwd) => {
+  await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+  await writeFile(join(cwd, "base.ts"), "export const base = 1;\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+  const baseline = await captureBaseline(cwd); await writeFile(join(cwd, "new.ts"), "export const added = true;\n");
+  assert.match(await captureBinaryDiff(cwd, baseline.head) ?? "", /new file mode/);
 }));
 
 test("does not attribute pre-existing dirty files to a task", () => fixture(async (cwd) => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addCommunicationEdge, addNode, addValidityEdges, claimOwnership, collapseValidated, communicationEvidence, createCommunicationGraph, createGraph, createValidityGraph, invalidateCone, nodeEarnsStructure, proposeResult, readyFrontier, rejectNode, retryNode, startNode, validateNode } from "../src/work/graph.js";
+import { addCommunicationEdge, addDependency, addNode, addValidityEdges, claimOwnership, collapseValidated, communicationEvidence, createCommunicationGraph, createGraph, createValidityGraph, invalidateCone, nodeEarnsStructure, proposeResult, readyFrontier, rejectNode, retryNode, startNode, validateNode } from "../src/work/graph.js";
 import { createWorld } from "../src/work/world.js";
 import { contract } from "./support.js";
 
@@ -17,6 +17,12 @@ test("work graph exposes only validated dependency-ready work on the critical pa
   graph = startNode(graph, "inspect"); graph = proposeResult(graph, candidate("inspect")); graph = validateNode(graph, "inspect");
   assert.equal(graph.nodes.implement?.state, "READY");
   assert.ok((graph.nodes.inspect?.criticalPath ?? 0) > (graph.nodes.verify?.criticalPath ?? 0));
+});
+
+test("discovered structure can gate existing work without introducing a cycle", () => {
+  let graph = addNode(createGraph(), { id: "implementation", title: "implement", kind: "implementation" });
+  graph = addNode(graph, { id: "impact", title: "inspect impact", kind: "inspection" }); graph = addDependency(graph, "implementation", "impact");
+  assert.equal(graph.nodes.implementation?.state, "BLOCKED"); assert.deepEqual(graph.nodes.implementation?.dependencies, ["impact"]); assert.throws(() => addDependency(graph, "impact", "implementation"), /cycle/);
 });
 
 test("candidate output never validates itself and rejection needs a new attempt", () => {
