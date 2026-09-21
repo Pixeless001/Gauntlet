@@ -7,7 +7,7 @@ import { contract, taskState } from "./support.js";
 import { coldViewHasEvidence, compileWorkerPacket, createVerificationView } from "../src/evidence/packets.js";
 
 const inputs = { contract: "contract", files: {}, packages: {}, rules: "rules", runtime: "native" };
-const pass: DeterministicEvaluation = { commandPassed: true, artifactsPresent: true, artifactHashesValid: true, staticChecksPassed: true, testsPassed: true, acceptanceEvidence: true, preservationEvidence: true, coldVerificationPassed: true, ownershipValid: true, baseCompatible: true, scopeValid: true, rulesValid: true };
+const pass: DeterministicEvaluation = { commandPassed: true, artifactsPresent: true, artifactHashesValid: true, staticChecksPassed: true, testsPassed: true, acceptanceEvidence: true, preservationEvidence: true, coldVerificationPassed: true, ownershipValid: true, baseCompatible: true, patchApplicable: true, scopeValid: true, rulesValid: true };
 
 function candidateWorld() {
   let graph = addNode(createGraph(), { id: "implementation", title: "Implement", kind: "implementation", writePaths: ["source.ts"] });
@@ -21,6 +21,7 @@ test("deterministic evaluation rejects before promotion and stale worlds never v
   assert.deepEqual(evaluateCandidate(world, node, { ...pass, testsPassed: false }), { disposition: "rejected", reasons: ["test failed"] });
   assert.deepEqual(evaluateCandidate({ ...world, fingerprint: { ...world.fingerprint, value: "new" } }, node, pass), { disposition: "stale", reasons: ["candidate input world is stale"] });
   assert.deepEqual(evaluateCandidate(world, { ...node, candidate: { ...node.candidate!, baseRevision: "other" } }, pass), { disposition: "rejected", reasons: ["base revision changed"] });
+  assert.deepEqual(evaluateCandidate(world, node, { ...pass, patchApplicable: false }), { disposition: "rejected", reasons: ["candidate patch is not applicable"] });
   const promoted = applyCandidateEvaluation(world, "implementation", evaluateCandidate(world, node, pass));
   assert.equal(promoted.work.nodes.implementation?.state, "VALIDATED"); assert.equal(promoted.decision.valid, false);
 });

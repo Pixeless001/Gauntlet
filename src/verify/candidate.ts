@@ -13,6 +13,7 @@ export interface DeterministicEvaluation {
   coldVerificationPassed: boolean;
   ownershipValid: boolean;
   baseCompatible: boolean;
+  patchApplicable: boolean;
   scopeValid: boolean;
   rulesValid: boolean;
   semanticAmbiguity?: boolean;
@@ -27,7 +28,7 @@ export function evaluateCandidate(world: CurrentValidWorld, node: WorkNode, eval
     [node.dependencies.every((id) => ["VALIDATED", "COLLAPSED"].includes(world.work.nodes[id]?.state ?? "")), "work dependency is not validated"],
     [evaluation.acceptanceEvidence, "acceptance evidence missing"], [evaluation.preservationEvidence, "preservation evidence missing"], [evaluation.coldVerificationPassed, "cold verification failed"],
     [candidate.inputFingerprint === world.fingerprint.value, "candidate input world is stale"],
-    [evaluation.ownershipValid && writeOwnershipConflicts(world, node).length === 0, "write ownership invalid"], [evaluation.baseCompatible && (!candidate.baseRevision || candidate.baseRevision === world.canonicalRevision), "base revision changed"], [evaluation.scopeValid, "scope violation"], [evaluation.rulesValid, "repository rule violation"],
+    [evaluation.ownershipValid && writeOwnershipConflicts(world, node).length === 0, "write ownership invalid"], [evaluation.baseCompatible && (!candidate.baseRevision || candidate.baseRevision === world.canonicalRevision), "base revision changed"], [evaluation.patchApplicable, "candidate patch is not applicable"], [evaluation.scopeValid, "scope violation"], [evaluation.rulesValid, "repository rule violation"],
   ];
   const reasons = checks.filter(([passed]) => !passed).map(([, reason]) => reason);
   if (reasons.includes("candidate input world is stale")) return { disposition: "stale", reasons };

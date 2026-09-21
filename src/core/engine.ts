@@ -52,6 +52,7 @@ import { addDependency, collapseValidated, fingerprint as worldFingerprint, read
 import { approachFingerprint } from "../work/precheck.js";
 import { NativeExecutionEngine } from "../execution/native-engine.js";
 import type { CandidateResult } from "../work/types.js";
+import { verifyIsolatedPatch } from "../verify/promotion.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null; directive: RuntimeDirective }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null; directive: RuntimeDirective }
@@ -299,13 +300,14 @@ export class GauntletEngine {
     }));
     const selectedTests = plan.checks.filter((check) => check.id.includes("test"));
     const currentBaseline = await captureBaseline(this.cwd);
+    const patchApplicable = patchRef && state.baseline.head ? await verifyIsolatedPatch(this.cwd, state.baseline.head, patch!) : true;
     const evaluation = {
       commandPassed: results.length === plan.checks.length && results.every((result) => result.status === "pass"), artifactsPresent: verificationEvidenceRefs.length === results.length && artifacts.length === evidenceRefs.length,
       artifactHashesValid: artifacts.every(Boolean), staticChecksPassed: results.filter((result) => !result.id.includes("test")).every((result) => result.status === "pass"),
       testsPassed: selectedTests.every((check) => results.some((result) => result.id === check.id && result.status === "pass")),
       acceptanceEvidence: machinePassed && evidenceRefs.length > 0, preservationEvidence: !state.findings.some((finding) => finding.blocking) && supplied.every((proof) => proof !== "test" || results.some((result) => result.id.includes("test") && result.status === "pass")),
       coldVerificationPassed: machinePassed && artifacts.every(Boolean), ownershipValid: true,
-      baseCompatible: state.world.canonicalRevision === state.baseline.head && currentBaseline.head === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
+      baseCompatible: state.world.canonicalRevision === state.baseline.head && currentBaseline.head === state.baseline.head, patchApplicable, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
     };
     const graphEvents = new GraphEventStore(this.cwd);
     const recordGraph = async (type: "NODE_CREATED" | "DEPENDENCY_ADDED" | "NODE_READY" | "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "PATCH_PROMOTED" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
