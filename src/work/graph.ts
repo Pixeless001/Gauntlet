@@ -36,7 +36,8 @@ export function addCommunicationEdge(graph: CommunicationGraph, from: string, to
 
 export function readyFrontier(world: CurrentValidWorld): WorkNode[] {
   const nodes = recomputeReady(world.work).nodes;
-  return Object.values(nodes).filter((node) => node.state === "READY").sort(compareReady);
+  const next = { ...world, work: { ...world.work, nodes } };
+  return Object.values(nodes).filter((node) => node.state === "READY" && node.validityInputs.every((input) => next.facts[input]?.status !== "stale") && writeOwnershipConflicts(next, node).length === 0).sort(compareReady);
 }
 
 export function recomputeReady(graph: WorkGraph): WorkGraph {
@@ -119,6 +120,12 @@ export function writeOwnershipConflicts(world: CurrentValidWorld, node: WorkNode
 export function claimOwnership(world: CurrentValidWorld, node: WorkNode): CurrentValidWorld {
   const conflicts = writeOwnershipConflicts(world, node); if (conflicts.length) throw new Error(`Write ownership conflict: ${conflicts.join(", ")}`);
   return invalidateDecision({ ...world, ownership: { ...world.ownership, [node.id]: [...node.writePaths] } });
+}
+
+export function releaseOwnership(world: CurrentValidWorld, id: string): CurrentValidWorld {
+  if (!(id in world.ownership)) return world;
+  const { [id]: _released, ...ownership } = world.ownership;
+  return invalidateDecision({ ...world, ownership });
 }
 
 export function refreshDecision(world: CurrentValidWorld, candidates: string[]): CurrentValidWorld {

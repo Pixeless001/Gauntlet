@@ -55,6 +55,13 @@ test("node admission and ownership reject graph bloat and overlapping writes", (
   assert.throws(() => claimOwnership(world, work.nodes.two!), /conflict/);
 });
 
+test("ready frontier excludes stale facts and overlapping ownership", () => {
+  let work = createGraph(); work = addNode(work, { id: "write", title: "Write", kind: "implementation", writePaths: ["source.ts"], validityInputs: ["file:source.ts"] }); work = addNode(work, { id: "other", title: "Other", kind: "implementation", writePaths: ["source.ts"] });
+  const base = { ...createWorld(contract("Change source.ts"), null, inputs), work, facts: { "file:source.ts": { id: "file:source.ts", provenance: "file:source.ts", statement: "changed", evidenceRefs: [], fingerprint: "old", version: 1, status: "stale" as const } } };
+  assert.deepEqual(readyFrontier(base).map((node) => node.id), ["other"]);
+  assert.deepEqual(readyFrontier({ ...base, facts: {}, ownership: { owner: ["source.ts"] } }).map((node) => node.id), []);
+});
+
 test("validated inactive branches collapse behind a compact reference", () => {
   let work = addNode(createGraph(), { id: "fact", title: "fact", kind: "inspection" });
   work = startNode(work, "fact"); work = proposeResult(work, candidate("fact")); work = validateNode(work, "fact");

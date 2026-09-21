@@ -1,4 +1,4 @@
-import { rejectNode, validateNode, writeOwnershipConflicts } from "../work/graph.js";
+import { rejectNode, releaseOwnership, validateNode, writeOwnershipConflicts } from "../work/graph.js";
 import type { CurrentValidWorld, WorkNode } from "../work/types.js";
 
 export type CandidateDisposition = "validated" | "rejected" | "stale" | "semantic-verification-required";
@@ -40,12 +40,12 @@ export function applyCandidateEvaluation(world: CurrentValidWorld, nodeId: strin
   const node = world.work.nodes[nodeId]; if (!node) throw new Error(`Unknown work node: ${nodeId}`);
   if (evaluation.disposition === "validated") {
     const fact = { id: `work:${nodeId}`, provenance: nodeId, statement: `${node.title} validated`, evidenceRefs: [...node.evidenceRefs], fingerprint: world.fingerprint.value, version: (world.facts[`work:${nodeId}`]?.version ?? 0) + 1, status: "validated" as const };
-    return { ...world, revision: world.revision + 1, facts: { ...world.facts, [fact.id]: fact }, work: validateNode(world.work, nodeId), decision: { ...world.decision, valid: false }, evidenceRefs: [...new Set([...world.evidenceRefs, ...node.evidenceRefs])] };
+    return { ...releaseOwnership(world, nodeId), revision: world.revision + 1, facts: { ...world.facts, [fact.id]: fact }, work: validateNode(world.work, nodeId), decision: { ...world.decision, valid: false }, evidenceRefs: [...new Set([...world.evidenceRefs, ...node.evidenceRefs])] };
   }
   if (evaluation.disposition === "stale") {
     const { candidate: _candidate, ...rest } = node;
-    return { ...world, revision: world.revision + 1, work: { ...world.work, version: world.work.version + 1, nodes: { ...world.work.nodes, [nodeId]: { ...rest, state: "STALE" } } }, decision: { ...world.decision, valid: false } };
+    return { ...releaseOwnership(world, nodeId), revision: world.revision + 1, work: { ...world.work, version: world.work.version + 1, nodes: { ...world.work.nodes, [nodeId]: { ...rest, state: "STALE" } } }, decision: { ...world.decision, valid: false } };
   }
   if (evaluation.disposition === "semantic-verification-required") return world;
-  return { ...world, revision: world.revision + 1, work: rejectNode(world.work, nodeId, evaluation.reasons.join("; "), node.evidenceRefs[0], node.candidate?.approachFingerprint), decision: { ...world.decision, valid: false } };
+  return { ...releaseOwnership(world, nodeId), revision: world.revision + 1, work: rejectNode(world.work, nodeId, evaluation.reasons.join("; "), node.evidenceRefs[0], node.candidate?.approachFingerprint), decision: { ...world.decision, valid: false } };
 }
