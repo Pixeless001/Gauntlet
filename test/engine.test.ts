@@ -53,6 +53,16 @@ test("clean git tasks retain an exact local patch artifact for promotion", async
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("independent impact inspections enter one native ready frontier", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-wide-frontier-"));
+  try {
+    await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "first.ts"), "export const first = 1;\n"); await writeFile(join(cwd, "second.ts"), "export const second = 1;\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+    const engine = new GauntletEngine(cwd); await engine.start("Change first.ts and second.ts", "wide"); await writeFile(join(cwd, "first.ts"), "export const first = 2;\n"); await writeFile(join(cwd, "second.ts"), "export const second = 2;\n"); await engine.finish("wide");
+    const events = await new GraphEventStore(cwd).read("wide"); assert.ok(events.some((event) => event.type === "NODE_STARTED" && event.nodeId === "impact-inspection")); assert.ok(events.some((event) => event.type === "NODE_STARTED" && event.nodeId === "impact-inspection-2"));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("clarification answers remain separate from the original request", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-clarification-"));
   try {

@@ -45,12 +45,13 @@ import { hasSufficientProof } from "../verify/proof-selector.js";
 import { capabilityCandidates } from "../control/capabilities.js";
 import type { RuntimeDirective } from "../control/types.js";
 import { GraphEventStore } from "../work/event-store.js";
-import { admitDiscovery, initializeWork, observeWorldActivity, proposeNodeResult, refreshFrontier } from "../work/runtime.js";
+import { admitDiscovery, initializeWork, observeWorldTransition, proposeNodeResult, refreshFrontier } from "../work/runtime.js";
 import { applyCandidateEvaluation, evaluateCandidate } from "../verify/candidate.js";
 import { createWorld } from "../work/world.js";
 import { addDependency, collapseValidated, fingerprint as worldFingerprint, readyFrontier, retryNode, selectDecisionNode } from "../work/graph.js";
 import { approachFingerprint } from "../work/precheck.js";
 import { NativeExecutionEngine } from "../execution/native-engine.js";
+import type { CandidateResult } from "../work/types.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null; directive: RuntimeDirective }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null; directive: RuntimeDirective }
@@ -195,12 +196,14 @@ export class GauntletEngine {
         if (!routed) directive = controlRuntime(value, { trigger: activity.kind === "file_write" ? "file_write" : activity.outcome === "fail" ? "failure" : "activity", candidates: [], stateChange: transition.progress ? [`progress:${transition.progress.toLowerCase()}`] : [], proofGain: activity.artifactRef ? [activity.artifactRef] : activity.proofRef ? [activity.proofRef] : [] }).directive;
       }
       const previous = Object.fromEntries(Object.entries(value.world.work.nodes).map(([nodeId, node]) => [nodeId, node.state]));
-      value.world = { ...observeWorldActivity(value.world, activity, fingerprint?.hash), uncertainties: Object.entries(value.control.uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof value.control.uncertainty) };
+      const worldTransition = observeWorldTransition(value.world, activity, fingerprint?.hash);
+      value.world = { ...worldTransition.world, uncertainties: Object.entries(value.control.uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof value.control.uncertainty) };
       const stale = Object.entries(value.world.work.nodes).filter(([nodeId, node]) => node.state === "STALE" && previous[nodeId] !== "STALE").map(([nodeId]) => nodeId);
       const at = new Date().toISOString(), detail = activity.target;
       return [
         { at, type: activity.kind === "file_write" ? "FACT_INVALIDATED" : activity.outcome === "fail" ? "RESULT_STALE" : "NODE_READY", ...(detail ? { detail } : {}) },
         ...stale.map((nodeId) => ({ at, type: "DESCENDANTS_STALE" as const, nodeId, ...(detail ? { detail } : {}) })),
+        ...worldTransition.cancel.map((nodeId) => ({ at, type: "WORKER_CANCELLED" as const, nodeId, ...(detail ? { detail } : {}) })),
       ];
     });
     if (immediateFindings.length) directive = { action: "validate", reason: immediateFindings.map((item) => item.message).join("; ") };
@@ -309,11 +312,12 @@ export class GauntletEngine {
       const node = state.world.work.nodes[nodeId], candidate = type === "RESULT_PROPOSED" ? node?.candidate : undefined;
       state.world = { ...state.world, appliedEvent: (await graphEvents.append(state.id, { at: new Date().toISOString(), type, nodeId, ...(detail ? { detail } : {}), ...(node ? { attempt: node.attempt } : {}), ...(candidate ? { candidate } : {}) }, state.world)).sequence };
     };
-    if (impactEvidenceRef && !state.world.work.nodes["impact-inspection"]) {
-      state.world = admitDiscovery(state.world, { id: "impact-inspection", title: "Inspect material repository impact", kind: "inspection", executor: "local", duration: "short", validityInputs: ["contract"], changes: { scheduling: true, validation: true, invalidation: true } });
-      state.world = refreshFrontier({ ...state.world, revision: state.world.revision + 1, work: addDependency(state.world.work, "implementation", "impact-inspection") });
-      await recordGraph("NODE_CREATED", "impact-inspection", "Impact inspection changed scheduling and invalidation");
-      await recordGraph("DEPENDENCY_ADDED", "implementation", "impact-inspection");
+    const impactNodes = impactEvidenceRef ? structuralTargets.map((_, index) => index ? `impact-inspection-${index + 1}` : "impact-inspection") : [];
+    for (const inspectionId of impactNodes) if (!state.world.work.nodes[inspectionId]) {
+      state.world = admitDiscovery(state.world, { id: inspectionId, title: "Inspect material repository impact", kind: "inspection", executor: "local", duration: "short", validityInputs: ["contract"], changes: { scheduling: true, validation: true, invalidation: true } });
+      state.world = refreshFrontier({ ...state.world, revision: state.world.revision + 1, work: addDependency(state.world.work, "implementation", inspectionId) });
+      await recordGraph("NODE_CREATED", inspectionId, "Impact inspection changed scheduling and invalidation");
+      await recordGraph("DEPENDENCY_ADDED", "implementation", inspectionId);
     }
     const executor = new NativeExecutionEngine(this.cwd, async (node) => {
       const affectedPaths = node.id === "implementation" ? changes.map((change) => change.path) : node.kind === "inspection" ? structuralTargets : [];
@@ -324,7 +328,7 @@ export class GauntletEngine {
         approachFingerprint: approachFingerprint({ mechanism: node.kind, target: affectedPaths.join(",") || node.id, assumptions: state.world.rules }),
       };
     });
-    const completeNode = async (nodeId: string) => {
+    const completeNode = async (nodeId: string, prepared?: CandidateResult) => {
       const before = state.world.work.nodes[nodeId]!;
       if (["VALIDATED", "COLLAPSED"].includes(before.state)) return { disposition: "validated" as const, reasons: [] };
       if (["REJECTED", "STALE"].includes(before.state)) {
@@ -334,7 +338,7 @@ export class GauntletEngine {
       state.world = refreshFrontier(state.world);
       selectDecisionNode(state.world, nodeId);
       if (["READY", "REJECTED", "STALE"].includes(before.state)) await recordGraph("NODE_STARTED", nodeId);
-      const [candidate] = await executor.runReady([selectDecisionNode(state.world, nodeId)]);
+      const candidate = prepared ?? (await executor.runReady([selectDecisionNode(state.world, nodeId)]))[0];
       if (!candidate) throw new Error(`Native execution did not return a candidate: ${nodeId}`);
       const { nodeId: _nodeId, attempt: _attempt, inputFingerprint: _fingerprint, ...proposal } = candidate;
       try { state.world = proposeNodeResult(state.world, nodeId, proposal); }
@@ -364,10 +368,15 @@ export class GauntletEngine {
     };
     while (true) {
       state.world = refreshFrontier(state.world);
-      const next = readyFrontier(state.world)[0];
-      if (!next) break;
-      const decision = await completeNode(next.id);
-      if (decision.disposition !== "validated") break;
+      const ready = readyFrontier(state.world);
+      if (!ready.length) break;
+      const candidates = await executor.runReady(ready);
+      let blocked = false;
+      for (const candidate of candidates) {
+        const decision = await completeNode(candidate.nodeId, candidate);
+        if (decision.disposition !== "validated") { blocked = true; break; }
+      }
+      if (blocked) break;
     }
     const validated = Object.values(state.world.work.nodes).filter((node) => node.state === "VALIDATED").map((node) => node.id);
     state.world = collapseValidated(state.world);

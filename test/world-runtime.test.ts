@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GraphEventStore } from "../src/work/event-store.js";
-import { admitDiscovery, initializeWork, observeWorldActivity, proposeNodeResult } from "../src/work/runtime.js";
+import { admitDiscovery, initializeWork, observeWorldActivity, observeWorldTransition, proposeNodeResult } from "../src/work/runtime.js";
 import { createWorld, refreshCapabilities, refreshValidityInputs } from "../src/work/world.js";
 import { addNode, addValidityEdges, createGraph, createValidityGraph, selectDecisionNode } from "../src/work/graph.js";
 import { contract } from "./support.js";
@@ -21,6 +21,13 @@ test("contract-scoped writes stale only the validity cone and rebuild the decisi
   assert.equal(changed.decision.valid, true); assert.deepEqual(changed.decision.candidates, []);
   const retry = proposeNodeResult(changed, "implementation", { executor: "primary", claims: ["changed"], artifactRefs: [], evidenceRefs: [], affectedPaths: ["source.ts"], unresolved: [] });
   assert.equal(retry.work.nodes.implementation?.state, "CANDIDATE"); assert.equal(retry.work.nodes.implementation?.attempt, 2);
+});
+
+test("invalidating a running node returns an explicit cancellation transition", () => {
+  const original = initializeWork(createWorld(contract("Change source.ts", { explicitPaths: ["source.ts"] }), "base", inputs));
+  const running = { ...original, work: { ...original.work, nodes: { ...original.work.nodes, implementation: { ...original.work.nodes.implementation!, state: "RUNNING" as const } } } };
+  const transition = observeWorldTransition(running, { kind: "file_write", target: "source.ts", outcome: "pass", outputBytes: 0 }, "after");
+  assert.deepEqual(transition.cancel, ["implementation"]); assert.equal(transition.world.work.nodes.implementation?.state, "STALE");
 });
 
 test("graph event writes serialize sequence numbers and retain rejection candidates", async () => {

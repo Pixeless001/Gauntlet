@@ -8,7 +8,7 @@ import { ARCHITECTURE_AUDIT, summarizeArchitectureAudit, validateAuditProof, typ
 test("architecture audit exposes incomplete mandatory architecture", async () => {
   const summary = summarizeArchitectureAudit(), issues = await validateAuditProof(process.cwd());
   assert.equal(new Set(ARCHITECTURE_AUDIT.map((item) => item.id)).size, ARCHITECTURE_AUDIT.length);
-  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, false); assert.ok(summary.blocking.includes("event-sourcing")); assert.deepEqual(issues, []);
+  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, false); assert.ok(summary.blocking.includes("candidates")); assert.equal(summary.blocking.includes("event-sourcing"), false); assert.deepEqual(issues, []);
   assert.ok(ARCHITECTURE_AUDIT.every((item) => item.acceptance && item.implementation.length && item.tests.length)); assert.ok(ARCHITECTURE_AUDIT.some((item) => item.status === "partial" && item.gap));
 });
 

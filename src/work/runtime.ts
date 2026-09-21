@@ -20,18 +20,22 @@ export function initializeWork(world: CurrentValidWorld): CurrentValidWorld {
 }
 
 export function observeWorldActivity(world: CurrentValidWorld, activity: TaskActivity, observedHash?: string): CurrentValidWorld {
-  if (!activity.target || !["file_write", "command", "test_result", "diff_change"].includes(activity.kind)) return world;
+  return observeWorldTransition(world, activity, observedHash).world;
+}
+
+export function observeWorldTransition(world: CurrentValidWorld, activity: TaskActivity, observedHash?: string): { world: CurrentValidWorld; stale: string[]; cancel: string[] } {
+  if (!activity.target || !["file_write", "command", "test_result", "diff_change"].includes(activity.kind)) return { world, stale: [], cancel: [] };
   const source = activity.kind === "file_write" ? `file:${activity.target}` : `activity:${activity.kind}:${activity.target}`;
-  const invalidated = invalidateCone(world, source).world;
-  const files = activity.kind === "file_write" && Object.hasOwn(invalidated.fingerprint.files, activity.target)
-    ? { ...invalidated.fingerprint.files, [activity.target]: observedHash ?? `${invalidated.fingerprint.files[activity.target]}:${activity.outcome ?? "unknown"}` }
-    : invalidated.fingerprint.files;
-  const refreshed = refreshWorld(invalidated, { contract: invalidated.fingerprint.contract, files, packages: invalidated.fingerprint.packages, config: invalidated.fingerprint.config, upstream: invalidated.fingerprint.upstream, rules: invalidated.fingerprint.rules, runtime: invalidated.fingerprint.runtime }, invalidated.canonicalRevision);
+  const invalidated = invalidateCone(world, source);
+  const files = activity.kind === "file_write" && Object.hasOwn(invalidated.world.fingerprint.files, activity.target)
+    ? { ...invalidated.world.fingerprint.files, [activity.target]: observedHash ?? `${invalidated.world.fingerprint.files[activity.target]}:${activity.outcome ?? "unknown"}` }
+    : invalidated.world.fingerprint.files;
+  const refreshed = refreshWorld(invalidated.world, { contract: invalidated.world.fingerprint.contract, files, packages: invalidated.world.fingerprint.packages, config: invalidated.world.fingerprint.config, upstream: invalidated.world.fingerprint.upstream, rules: invalidated.world.fingerprint.rules, runtime: invalidated.world.fingerprint.runtime }, invalidated.world.canonicalRevision);
   const facts = {
     ...refreshed.facts,
     [source]: { id: source, provenance: source, statement: `${activity.kind} observed for ${activity.target}`, evidenceRefs: [activity.artifactRef, activity.proofRef].filter((item): item is string => Boolean(item)), fingerprint: `${refreshed.fingerprint.value}:${activity.outcome ?? "unknown"}`, version: (refreshed.facts[source]?.version ?? 0) + 1, status: "validated" as const },
   };
-  return refreshFrontier({ ...refreshed, facts, revision: refreshed.revision + 1 });
+  return { world: refreshFrontier({ ...refreshed, facts, revision: refreshed.revision + 1 }), stale: invalidated.stale, cancel: invalidated.cancel };
 }
 
 export function proposeNodeResult(world: CurrentValidWorld, nodeId: string, result: Omit<CandidateResult, "nodeId" | "attempt" | "inputFingerprint">): CurrentValidWorld {
