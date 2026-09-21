@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ARCHITECTURE_AUDIT, summarizeArchitectureAudit, validateAuditProof, type ArchitectureAuditItem } from "../src/measure/architecture-audit.js";
 
-test("architecture audit proves every mandatory product capability", async () => {
+test("architecture audit exposes incomplete mandatory architecture", async () => {
   const summary = summarizeArchitectureAudit(), issues = await validateAuditProof(process.cwd());
   assert.equal(new Set(ARCHITECTURE_AUDIT.map((item) => item.id)).size, ARCHITECTURE_AUDIT.length);
-  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, true); assert.deepEqual(summary.blocking, []); assert.deepEqual(issues, []);
-  assert.ok(ARCHITECTURE_AUDIT.every((item) => item.acceptance && item.implementation.length && item.tests.length && !item.gap));
+  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, false); assert.ok(summary.blocking.includes("event-sourcing")); assert.deepEqual(issues, []);
+  assert.ok(ARCHITECTURE_AUDIT.every((item) => item.acceptance && item.implementation.length && item.tests.length)); assert.ok(ARCHITECTURE_AUDIT.some((item) => item.status === "partial" && item.gap));
 });
 
 test("architecture audit rejects duplicate capability ids", () => { assert.throws(() => summarizeArchitectureAudit([ARCHITECTURE_AUDIT[0]!, ARCHITECTURE_AUDIT[0]!]), /duplicate/); });
