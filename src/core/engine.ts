@@ -32,6 +32,7 @@ import { graphExpansionCandidate, inspectImpact } from "../intelligence/working-
 import { reconstruct } from "../execution-state/reconstruct.js";
 import { remainingProof, type ProofKind } from "../verify/proof-selector.js";
 import { ArtifactStore } from "../output/store.js";
+import { coldViewHasEvidence, createVerificationView } from "../evidence/packets.js";
 import { CapabilityRegistry, type Capability, type CapabilityKind } from "../capabilities/registry.js";
 import { CapabilityResolver } from "../capabilities/resolver.js";
 import { adapter } from "../adapters/install.js";
@@ -292,13 +293,14 @@ export class GauntletEngine {
       } catch { return false; }
     }));
     const selectedTests = plan.checks.filter((check) => check.id.includes("test"));
+    const currentBaseline = await captureBaseline(this.cwd);
     const evaluation = {
       commandPassed: results.length === plan.checks.length && results.every((result) => result.status === "pass"), artifactsPresent: verificationEvidenceRefs.length === results.length && artifacts.length === evidenceRefs.length,
       artifactHashesValid: artifacts.every(Boolean), staticChecksPassed: results.filter((result) => !result.id.includes("test")).every((result) => result.status === "pass"),
       testsPassed: selectedTests.every((check) => results.some((result) => result.id === check.id && result.status === "pass")),
       acceptanceEvidence: machinePassed && evidenceRefs.length > 0, preservationEvidence: !state.findings.some((finding) => finding.blocking) && supplied.every((proof) => proof !== "test" || results.some((result) => result.id.includes("test") && result.status === "pass")),
       coldVerificationPassed: machinePassed && artifacts.every(Boolean), ownershipValid: true,
-      baseCompatible: state.world.canonicalRevision === state.baseline.head && (await captureBaseline(this.cwd)).head === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
+      baseCompatible: state.world.canonicalRevision === state.baseline.head && currentBaseline.head === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
     };
     const graphEvents = new GraphEventStore(this.cwd);
     const recordGraph = async (type: "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "PATCH_PROMOTED" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
@@ -337,7 +339,7 @@ export class GauntletEngine {
         return { disposition: "rejected" as const, reasons: [reason] };
       }
       await recordGraph("RESULT_PROPOSED", nodeId);
-      const decision = evaluateCandidate(state.world, state.world.work.nodes[nodeId]!, evaluation);
+      const candidateNode = state.world.work.nodes[nodeId]!, decision = evaluateCandidate(state.world, candidateNode, { ...evaluation, coldVerificationPassed: evaluation.coldVerificationPassed && coldViewHasEvidence(createVerificationView(state, candidateNode)) });
       state.world = applyCandidateEvaluation(state.world, nodeId, decision);
       if (decision.disposition === "validated") {
         await recordGraph("RESULT_VALIDATED", nodeId);
@@ -353,7 +355,7 @@ export class GauntletEngine {
     state.world = collapseValidated(state.world);
     for (const nodeId of validated.filter((id) => state.world.work.nodes[id]?.state === "COLLAPSED")) await recordGraph("GRAPH_COLLAPSED", nodeId);
     state.world = refreshFrontier(state.world);
-    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied, state.world);
+    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied, state.world, { repositoryRevision: currentBaseline.head, evidenceValid: artifacts.length === evidenceRefs.length && artifacts.every(Boolean) });
     for (const proof of completion.missingProof) state.findings.push({ code: `missing-preservation-${proof}`, severity: "error", blocking: true, message: `Required preservation proof is unavailable: ${proof}`, proof: [] });
     const passed = machinePassed && outstanding.length === 0 && completion.status === "complete";
     recordVerification(state, passed, evidenceRefs, supplied);

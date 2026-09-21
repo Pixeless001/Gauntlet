@@ -4,7 +4,7 @@ import { addNode, createGraph, proposeResult, startNode } from "../src/work/grap
 import { applyCandidateEvaluation, evaluateCandidate, type DeterministicEvaluation } from "../src/verify/candidate.js";
 import { createWorld } from "../src/work/world.js";
 import { contract, taskState } from "./support.js";
-import { compileWorkerPacket, createVerificationView } from "../src/evidence/packets.js";
+import { coldViewHasEvidence, compileWorkerPacket, createVerificationView } from "../src/evidence/packets.js";
 
 const inputs = { contract: "contract", files: {}, packages: {}, rules: "rules", runtime: "native" };
 const pass: DeterministicEvaluation = { commandPassed: true, artifactsPresent: true, artifactHashesValid: true, staticChecksPassed: true, testsPassed: true, acceptanceEvidence: true, preservationEvidence: true, coldVerificationPassed: true, ownershipValid: true, baseCompatible: true, scopeValid: true, rulesValid: true };
@@ -34,5 +34,5 @@ test("semantic residue stays outside deterministic promotion", () => {
 test("worker and verifier packets are sparse and narrative-free", () => {
   const state = taskState("Change source.ts"), world = candidateWorld(); state.world = world;
   const node = world.work.nodes.implementation!, packet = compileWorkerPacket(state, node), verification = createVerificationView(state, node);
-  assert.equal(packet.returnSchema, "CandidateResult"); assert.deepEqual(packet.ownership, ["source.ts"]); assert.deepEqual(verification.candidate.affectedPaths, ["source.ts"]); assert.equal("claims" in verification.candidate, false);
+  assert.equal(packet.returnSchema, "CandidateResult"); assert.deepEqual(packet.ownership, ["source.ts"]); assert.deepEqual(verification.candidate.affectedPaths, ["source.ts"]); assert.equal("claims" in verification.candidate, false); assert.equal(coldViewHasEvidence(verification), true);
 });

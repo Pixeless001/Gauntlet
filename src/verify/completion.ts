@@ -7,8 +7,9 @@ import type { CurrentValidWorld } from "../work/types.js";
 import { decisionIsFresh, fingerprint } from "../work/graph.js";
 
 export interface CompletionDecision { status: "complete" | "incomplete" | "semantic-verification-required"; reasons: string[]; missingInvariants?: string[]; missingProof: ProofKind[]; proofRefs?: string[] }
+export interface CompletionContext { repositoryRevision?: string | null; evidenceValid?: boolean }
 
-export function decideCompletion(contract: TaskContract, findings: Finding[], uncertainty: UncertaintyState, supplied: ProofKind[], world?: CurrentValidWorld): CompletionDecision {
+export function decideCompletion(contract: TaskContract, findings: Finding[], uncertainty: UncertaintyState, supplied: ProofKind[], world?: CurrentValidWorld, context: CompletionContext = {}): CompletionDecision {
   const available = new Set(supplied), missingProof = requiredPreservationProof(contract).filter((kind) => !available.has(kind));
   const material = unresolved(uncertainty).filter((kind) => kind !== "visual" && kind !== "performance" || requiredPreservationProof(contract).includes(kind === "visual" ? "browser" : "measurement"));
   const worldFingerprintMatches = !world || (() => { const { value, ...inputs } = world.fingerprint; return fingerprint(inputs) === value; })();
@@ -21,6 +22,8 @@ export function decideCompletion(contract: TaskContract, findings: Finding[], un
     ...(world && !decisionIsFresh(world) ? ["action menu is stale"] : []),
     ...(world && Object.keys(world.ownership).length ? ["write ownership remains active"] : []),
     ...(world && !worldFingerprintMatches ? ["world fingerprint is inconsistent"] : []),
+    ...(world && context.repositoryRevision !== undefined && world.canonicalRevision !== context.repositoryRevision ? ["repository revision changed"] : []),
+    ...(context.evidenceValid === false ? ["evidence is unreadable or hash-mismatched"] : []),
   ];
   const semantic = world && Object.values(world.work.nodes).some((node) => node.state === "CANDIDATE" && (node.candidate?.unresolved.length ?? 0) > 0);
   const missingInvariants = [...new Set(reasons)], proofRefs = [...new Set([...findings.flatMap((finding) => finding.proof), ...(world?.evidenceRefs ?? [])])];

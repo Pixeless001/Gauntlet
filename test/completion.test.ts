@@ -15,3 +15,9 @@ test("completion rejects active ownership and inconsistent world fingerprints", 
   const corrupt = decideCompletion(fresh.contract, [], resolved, ["diff", "repository_rule"], { ...fresh, fingerprint: { ...fresh.fingerprint, value: "wrong" } });
   assert.ok(corrupt.missingInvariants?.includes("world fingerprint is inconsistent"));
 });
+
+test("completion rejects repository drift and invalid evidence", () => {
+  const world = createWorld(contract("Fix README typo"), "base", inputs), fresh = { ...world, decision: { ...world.decision, valid: true, revision: world.revision, candidates: [] } };
+  const drifted = decideCompletion(fresh.contract, [], resolved, ["diff", "repository_rule"], fresh, { repositoryRevision: "other", evidenceValid: false });
+  assert.ok(drifted.missingInvariants?.includes("repository revision changed")); assert.ok(drifted.missingInvariants?.includes("evidence is unreadable or hash-mismatched"));
+});

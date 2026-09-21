@@ -42,3 +42,7 @@ export function createVerificationView(state: TaskState, node: WorkNode): Verifi
     candidate: { nodeId: node.candidate.nodeId, artifactRefs: [...node.candidate.artifactRefs], evidenceRefs: [...node.candidate.evidenceRefs], affectedPaths: [...node.candidate.affectedPaths], ...(node.candidate.patchRef ? { patchRef: node.candidate.patchRef } : {}), ...(node.candidate.baseRevision ? { baseRevision: node.candidate.baseRevision } : {}) },
   };
 }
+
+export function coldViewHasEvidence(view: VerificationView): boolean {
+  return Boolean(view.goal) && view.candidate.artifactRefs.length > 0 && view.candidate.evidenceRefs.every((ref) => view.candidate.artifactRefs.includes(ref));
+}
