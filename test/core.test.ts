@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { extractContract, detectAmbiguity } from "../src/core/intent.js";
 import { compact, shouldCompact } from "../src/core/compact.js";
-import { measure } from "../src/core/measure.js";
+import { frontierWait, measure } from "../src/core/measure.js";
 import { loopFinding } from "../src/core/guard.js";
 import { createControlState, createTaskWorld, type TaskState } from "../src/core/task-state.js";
 import { StateStore } from "../src/state/store.js";
@@ -90,6 +90,13 @@ test("measurement exposes selection and execution-memory restraint", () => {
   const value = state(); value.control.execution = { activeCheckpointId: "root", nextEvent: 1, events: [{ index: 0, type: "command", outcome: "pass" }], checkpoints: [{ id: "root", kind: "task", status: "active", summary: "task", constraints: [], decisions: [], relevantFiles: [], relevantSymbols: [], proofRefs: [], createdFromEvent: 0, resolves: [] }] };
   const result = measure(value, [], [{ id: "check", reason: "check", command: "check", exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, status: "pass", summary: "pass" }]);
   assert.deepEqual(result.selection, { interventions: 0, traces: 0, averageDepth: 0, graphExpansions: 0, externalDocCalls: 0, browserActivations: 0, delegations: 0 }); assert.deepEqual(result.memory, { rawEvents: 1, checkpoints: 1, activePath: 1, rejectedBranches: 0 });
+});
+
+test("measurement separates frontier, evidence, and redo metrics", () => {
+  const value = state(); value.world.work.nodes = { inspect: { id: "inspect", title: "inspect", kind: "inspection", executor: "worker", required: true, state: "VALIDATED", attempt: 2, duration: "short", dependencies: [], validityInputs: [], writePaths: [], resolves: [], evidenceRefs: ["proof", "proof"], criticalPath: 2 } };
+  const result = measure(value, [], [], new Date(), undefined, { frontierWaitMs: 5, maxFrontier: 2, semanticSynthesis: 1, workerCandidates: 1 });
+  assert.deepEqual(result.orchestration, { nodes: 1, requiredNodes: 1, validatedNodes: 1, staleNodes: 0, collapsedNodes: 0, criticalPath: 2, decisionRevision: value.world.decision.revision, eventSequence: value.world.appliedEvent, totalNodeAttempts: 2, duplicateEvidence: 1, frontierWaitMs: 5, maxFrontier: 2, fanOutBenefit: 1, workerCandidates: 1, semanticSynthesis: 1, verifierYield: 0, redoRate: 0.5, writeConflicts: 0 });
+  assert.equal(frontierWait([{ at: "2026-01-01T00:00:00.000Z", type: "NODE_READY", nodeId: "inspect" }, { at: "2026-01-01T00:00:00.005Z", type: "NODE_STARTED", nodeId: "inspect" }]), 5);
 });
 
 test("state ids cannot escape the local state directory", async () => {

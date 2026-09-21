@@ -1,5 +1,7 @@
 export interface SubstrateDimension { native: string; langgraphPrototype: string; }
 
+export const LANGGRAPH_PROBE = { package: "@langchain/langgraph", version: "1.4.16", transition: 2, checkpoint: 2, dependencyDirectories: 16, temporary: true, retained: true } as const;
+
 export const SUBSTRATE_COMPARISON: Record<string, SubstrateDimension> = {
   dependencyFootprint: { native: "no runtime dependency", langgraphPrototype: "external package and transitive dependency tree" },
   sourceComplexity: { native: "small explicit execution boundary", langgraphPrototype: "state annotation, graph, checkpoint configuration" },
@@ -18,5 +20,5 @@ export const SUBSTRATE_COMPARISON: Record<string, SubstrateDimension> = {
 };
 
 export function substrateProof(): string[] {
-  return ["selected: native", "langgraph: disposable non-shipping prototype", "langgraph probe: state transition and checkpoint resume succeeded", ...Object.entries(SUBSTRATE_COMPARISON).map(([dimension, result]) => `${dimension}: native=${result.native}; langgraph=${result.langgraphPrototype}`)];
+  return ["selected: native", "langgraph: disposable non-shipping prototype", `langgraph probe: ${LANGGRAPH_PROBE.package}@${LANGGRAPH_PROBE.version} transition=${LANGGRAPH_PROBE.transition} checkpoint=${LANGGRAPH_PROBE.checkpoint}`, ...Object.entries(SUBSTRATE_COMPARISON).map(([dimension, result]) => `${dimension}: native=${result.native}; langgraph=${result.langgraphPrototype}`)];
 }

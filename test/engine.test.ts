@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { GauntletEngine } from "../src/core/engine.js";
 import { GraphEventStore } from "../src/work/event-store.js";
 import { ArtifactStore } from "../src/output/store.js";
+import { StateStore } from "../src/state/store.js";
+import { admitDiscovery } from "../src/work/runtime.js";
 import type { CounterfactualEnvironment } from "../src/verify/counterfactual.js";
 import { run } from "../src/repo/process.js";
 import { execFile as execFileCallback } from "node:child_process";
@@ -60,6 +62,17 @@ test("independent impact inspections enter one native ready frontier", async () 
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "first.ts"), "export const first = 1;\n"); await writeFile(join(cwd, "second.ts"), "export const second = 1;\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
     const engine = new GauntletEngine(cwd); await engine.start("Change first.ts and second.ts", "wide"); await writeFile(join(cwd, "first.ts"), "export const first = 2;\n"); await writeFile(join(cwd, "second.ts"), "export const second = 2;\n"); await engine.finish("wide");
     const events = await new GraphEventStore(cwd).read("wide"); assert.ok(events.some((event) => event.type === "NODE_STARTED" && event.nodeId === "impact-inspection")); assert.ok(events.some((event) => event.type === "NODE_STARTED" && event.nodeId === "impact-inspection-2"));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("one worker receives only its sparse packet and returns a candidate", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-worker-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "source.ts"), "export const value = 1;\n");
+    let packet: import("../src/evidence/packets.js").WorkerPacket | undefined, proof = "";
+    const engine = new GauntletEngine(cwd, { worker: async (value) => { packet = value; return { claims: ["read-only impact checked"], artifactRefs: [proof], evidenceRefs: [proof], affectedPaths: [], unresolved: [] }; } });
+    await engine.start("Change source.ts", "worker"); proof = (await new ArtifactStore(cwd).put("worker", { operation: "inspect", input: "source.ts", output: "impact checked", status: "pass", semanticDescription: "Worker impact evidence", paths: ["source.ts"], symbols: [], processor: "code" })).artifactRef; await new StateStore(cwd).updateTask("worker", (state) => { state.world = admitDiscovery(state.world, { id: "worker-impact", title: "Inspect independent impact", kind: "inspection", executor: "worker", duration: "meaningful", changes: { scheduling: true }, validityInputs: ["contract"] }); }); await writeFile(join(cwd, "source.ts"), "export const value = 2;\n"); await engine.finish("worker");
+    assert.equal(packet?.returnSchema, "CandidateResult"); assert.equal(packet?.authority, "read-only"); assert.deepEqual(packet?.ownership, []); assert.ok((await new GraphEventStore(cwd).read("worker")).some((event) => event.type === "RESULT_PROPOSED" && event.nodeId === "worker-impact"));
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

@@ -7,7 +7,7 @@ import { runVerification } from "../verify/runner.js";
 import { createContextPacket, formatContext } from "./context.js";
 import { evaluateGuards, loopFinding } from "./guard.js";
 import { detectAmbiguity, extractContract } from "./intent.js";
-import { measure, type TaskMeasurement } from "./measure.js";
+import { frontierWait, measure, type TaskMeasurement } from "./measure.js";
 import { STEERING_POLICY } from "./steer.js";
 import type { TaskActivity } from "./events.js";
 import { createControlState, type TaskState } from "./task-state.js";
@@ -32,7 +32,7 @@ import { graphExpansionCandidate, inspectImpact } from "../intelligence/working-
 import { reconstruct } from "../execution-state/reconstruct.js";
 import { remainingProof, type ProofKind } from "../verify/proof-selector.js";
 import { ArtifactStore } from "../output/store.js";
-import { coldViewHasEvidence, createVerificationView } from "../evidence/packets.js";
+import { coldViewHasEvidence, compileWorkerPacket, createVerificationView, type WorkerPacket } from "../evidence/packets.js";
 import { CapabilityRegistry, type Capability, type CapabilityKind } from "../capabilities/registry.js";
 import { CapabilityResolver } from "../capabilities/resolver.js";
 import { adapter } from "../adapters/install.js";
@@ -53,11 +53,12 @@ import { approachFingerprint } from "../work/precheck.js";
 import { NativeExecutionEngine } from "../execution/native-engine.js";
 import type { CandidateResult } from "../work/types.js";
 import { verifyIsolatedPatch } from "../verify/promotion.js";
+import { semanticSynthesisRequest, type SemanticSynthesisRequest } from "../work/reducer.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null; directive: RuntimeDirective }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null; directive: RuntimeDirective }
 export interface LifecycleResult { state: TaskState; continuation: ContinuationRecord }
-export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableProof?: ProofKind[]; harness?: HarnessName; capabilities?: Capability[] }
+export interface EngineOptions { preChangeEnvironment?: (head: string, candidateTests: string[]) => Promise<CounterfactualEnvironment | null>; availableProof?: ProofKind[]; harness?: HarnessName; capabilities?: Capability[]; worker?: (packet: WorkerPacket, signal: AbortSignal) => Promise<Omit<CandidateResult, "nodeId" | "attempt" | "executor" | "inputFingerprint">>; synthesize?: (request: SemanticSynthesisRequest) => Promise<CandidateResult[]> }
 export class GauntletEngine {
   private readonly store: StateStore;
   private readonly registry = new CapabilityRegistry();
@@ -321,8 +322,13 @@ export class GauntletEngine {
       await recordGraph("NODE_CREATED", inspectionId, "Impact inspection changed scheduling and invalidation");
       await recordGraph("DEPENDENCY_ADDED", "implementation", inspectionId);
     }
-    const executor = new NativeExecutionEngine(this.cwd, async (node) => {
+    const executor = new NativeExecutionEngine(this.cwd, async (node, signal) => {
       const affectedPaths = node.id === "implementation" ? changes.map((change) => change.path) : node.kind === "inspection" ? structuralTargets : [];
+      if (node.executor === "worker") {
+        if (!this.options.worker) throw new Error(`No worker executor is available: ${node.id}`);
+        const result = await this.options.worker(compileWorkerPacket(state, node), signal);
+        return { ...result, nodeId: node.id, attempt: node.attempt, executor: "worker", inputFingerprint: state.world.fingerprint.value };
+      }
       return {
         nodeId: node.id, attempt: node.attempt, executor: node.executor, inputFingerprint: state.world.fingerprint.value,
         claims: node.id === "implementation" ? (changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]) : node.kind === "inspection" ? ["Candidate impact inspection recorded"] : ["Candidate verification evidence collected"],
@@ -356,7 +362,8 @@ export class GauntletEngine {
       const candidateNode = state.world.work.nodes[nodeId]!, inspection = candidateNode.kind === "inspection", nodeEvaluation = inspection
         ? { ...evaluation, acceptanceEvidence: Boolean(impactEvidenceRef), preservationEvidence: true, coldVerificationPassed: artifacts.every(Boolean), scopeValid: true, rulesValid: true }
         : evaluation;
-      const decision = evaluateCandidate(state.world, candidateNode, { ...nodeEvaluation, coldVerificationPassed: nodeEvaluation.coldVerificationPassed && coldViewHasEvidence(createVerificationView(state, candidateNode)) });
+      const candidateArtifacts = await Promise.all((candidateNode.candidate?.artifactRefs ?? []).map((ref) => artifactIsValid(this.cwd, ref)));
+      const decision = evaluateCandidate(state.world, candidateNode, { ...nodeEvaluation, artifactHashesValid: nodeEvaluation.artifactHashesValid && candidateArtifacts.length > 0 && candidateArtifacts.every(Boolean), coldVerificationPassed: nodeEvaluation.coldVerificationPassed && coldViewHasEvidence(createVerificationView(state, candidateNode)) });
       const beforeStates = Object.fromEntries(Object.entries(state.world.work.nodes).map(([id, item]) => [id, item.state]));
       state.world = applyCandidateEvaluation(state.world, nodeId, decision);
       if (decision.disposition === "validated") {
@@ -368,13 +375,17 @@ export class GauntletEngine {
       else if (decision.disposition === "rejected") await recordGraph("RESULT_REJECTED", nodeId, decision.reasons.join("; "));
       return decision;
     };
+    let maxFrontier = 0, semanticSynthesis = 0;
     while (true) {
       state.world = refreshFrontier(state.world);
       const ready = readyFrontier(state.world);
       if (!ready.length) break;
-      const candidates = await executor.runReady(ready);
+      maxFrontier = Math.max(maxFrontier, ready.length);
+      const candidates = await executor.runReady(ready), synthesis = semanticSynthesisRequest(candidates);
+      if (synthesis) semanticSynthesis += 1;
+      const resolved: CandidateResult[] = synthesis && this.options.synthesize ? await this.options.synthesize(synthesis) : synthesis ? candidates.map((candidate) => synthesis.candidates.some((item) => item.nodeId === candidate.nodeId && item.attempt === candidate.attempt) ? { ...candidate, unresolved: [...new Set([...candidate.unresolved, "behavior" as const])] } : candidate) : candidates;
       let blocked = false;
-      for (const candidate of candidates) {
+      for (const candidate of resolved) {
         const decision = await completeNode(candidate.nodeId, candidate);
         if (decision.disposition !== "validated") { blocked = true; break; }
       }
@@ -389,7 +400,7 @@ export class GauntletEngine {
     const passed = machinePassed && outstanding.length === 0 && completion.status === "complete";
     recordVerification(state, passed, evidenceRefs, supplied);
     if (passed) state.control.activeSkills = [];
-    const value = measure(state, changes, results, new Date(), completion);
+    const history = await graphEvents.read(state.id), value = measure(state, changes, results, new Date(), completion, { frontierWaitMs: frontierWait(history), maxFrontier, semanticSynthesis, workerCandidates: history.filter((event) => event.type === "RESULT_PROPOSED" && event.candidate?.executor === "worker").length });
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;
   }
@@ -407,6 +418,13 @@ async function injection(context: Awaited<ReturnType<typeof createContextPacket>
 function deduplicateFindings<T extends { code: string; proof: string[] }>(findings: T[]): T[] {
   const seen = new Set<string>();
   return findings.filter((finding) => { const key = `${finding.code}:${finding.proof.join(":")}`; if (seen.has(key)) return false; seen.add(key); return true; });
+}
+
+async function artifactIsValid(cwd: string, ref: string): Promise<boolean> {
+  try {
+    const store = new ArtifactStore(cwd), metadata = await store.metadata(ref), output = await store.raw(ref);
+    return metadata.outputHash === createHash("sha256").update(output).digest("hex") && metadata.status === "pass";
+  } catch { return false; }
 }
 
 function startDirective(size: TaskState["contract"]["size"], clarification: boolean): RuntimeDirective {

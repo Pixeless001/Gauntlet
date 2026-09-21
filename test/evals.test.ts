@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { evalSuites, runBuiltInEvals, runEvalSuite, saveEvalRun } from "../src/measure/eval-runner.js";
 import { interventionRoi, selectionQuality } from "../src/measure/evals.js";
 import { ARCHITECTURE_FIXTURES } from "../src/measure/fixtures.js";
-import { SUBSTRATE_COMPARISON } from "../src/measure/substrate.js";
+import { LANGGRAPH_PROBE, SUBSTRATE_COMPARISON } from "../src/measure/substrate.js";
 
 test("built-in routing and silence evals persist concrete proof", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-evals-"));
@@ -41,5 +41,5 @@ test("selection quality reports activation, silence, and state-change rates sepa
 });
 
 test("substrate comparison covers the non-shipping LangGraph probe and native selection", () => {
-  assert.ok(Object.keys(SUBSTRATE_COMPARISON).length >= 14); assert.equal(SUBSTRATE_COMPARISON.coldContext?.native, "communication graph projections");
+  assert.ok(Object.keys(SUBSTRATE_COMPARISON).length >= 14); assert.equal(SUBSTRATE_COMPARISON.coldContext?.native, "communication graph projections"); assert.deepEqual(LANGGRAPH_PROBE, { package: "@langchain/langgraph", version: "1.4.16", transition: 2, checkpoint: 2, dependencyDirectories: 16, temporary: true, retained: true });
 });
