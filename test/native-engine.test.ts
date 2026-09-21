@@ -26,6 +26,12 @@ test("native engine permits disjoint isolated writes and only one worker", async
   assert.deepEqual(started.sort(), ["a", "c"]);
 });
 
+test("native engine caps local ready work at four", async () => {
+  let graph = createGraph(); for (const id of ["a", "b", "c", "d", "e"]) graph = addNode(graph, { id, title: id, kind: "local", executor: "local" });
+  const engine = new NativeExecutionEngine(process.cwd(), async (node) => result(node.id), 99);
+  assert.equal((await engine.runReady(Object.values(graph.nodes))).length, 4);
+});
+
 test("native engine checkpoints and graph events resume locally", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-native-"));
   try {

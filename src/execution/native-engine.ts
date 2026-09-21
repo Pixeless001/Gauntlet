@@ -11,7 +11,7 @@ export class NativeExecutionEngine implements ExecutionEngine {
   constructor(private readonly cwd: string, private readonly execute: NativeNodeExecutor, private readonly concurrency = 4, private readonly capabilities: Partial<SchedulerCapabilities> = {}) {}
 
   async runReady(nodes: WorkNode[], signal?: AbortSignal): Promise<CandidateResult[]> {
-    const selected = scheduleReady(nodes, { isolatedMutation: this.capabilities.isolatedMutation ?? false, maxLocal: Math.max(1, this.concurrency), maxWorkers: 1 });
+    const selected = scheduleReady(nodes, { isolatedMutation: this.capabilities.isolatedMutation ?? false, maxLocal: Math.min(4, Math.max(1, this.concurrency)), maxWorkers: 1 });
     const results = await Promise.allSettled(selected.map(async (node) => {
       const controller = new AbortController(); this.controllers.set(node.id, controller);
       const abort = () => controller.abort(); signal?.addEventListener("abort", abort, { once: true });

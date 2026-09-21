@@ -5,7 +5,7 @@ export interface SchedulerCapabilities { isolatedMutation: boolean; maxLocal?: n
 export function scheduleReady(nodes: WorkNode[], capabilities: SchedulerCapabilities): WorkNode[] {
   const localLimit = capabilities.maxLocal ?? 4, workerLimit = capabilities.maxWorkers ?? 1;
   const selected: WorkNode[] = [], claimed = new Set<string>(); let workers = 0, mutationSelected = false;
-  for (const node of nodes.filter((node) => node.state === "READY").sort((left, right) => rank(left, right, capabilities.openUncertainties ?? []))) {
+  for (const node of nodes.filter((node) => node.state === "READY").sort((left, right) => rank(left, right, capabilities.openUncertainties ?? [], nodes))) {
     if (node.executor === "worker" && workers >= workerLimit) continue;
     const mutation = node.writePaths.length > 0;
     if (mutation && (mutationSelected && !capabilities.isolatedMutation || node.writePaths.some((path) => claimed.has(path)))) continue;
@@ -18,13 +18,15 @@ export function scheduleReady(nodes: WorkNode[], capabilities: SchedulerCapabili
   return selected;
 }
 
-function rank(left: WorkNode, right: WorkNode, openUncertainties: readonly string[]): number {
+function rank(left: WorkNode, right: WorkNode, openUncertainties: readonly string[], nodes: WorkNode[]): number {
   return Number(right.required) - Number(left.required)
     || right.criticalPath - left.criticalPath
     || resolvedCount(right, openUncertainties) - resolvedCount(left, openUncertainties)
+    || unlockedCount(right, nodes) - unlockedCount(left, nodes)
     || verificationRank(left) - verificationRank(right)
     || left.id.localeCompare(right.id);
 }
 
 function verificationRank(node: WorkNode): number { return node.kind === "verification" ? -1 : node.required ? 0 : 1; }
 function resolvedCount(node: WorkNode, open: readonly string[]): number { return node.resolves.filter((kind) => open.includes(kind)).length; }
+function unlockedCount(node: WorkNode, nodes: WorkNode[]): number { return nodes.filter((child) => child.required && child.dependencies.includes(node.id)).length; }
