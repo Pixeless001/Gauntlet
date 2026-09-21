@@ -125,9 +125,12 @@ export interface GraphEvent {
   fingerprint?: string;
   attempt?: number;
   candidate?: CandidateResult;
-  /** Compact materialization used only to recover an event persisted before its checkpoint. */
+  /** Legacy pre-V3.1 materialization, retained so existing sessions remain readable. */
   world?: CurrentValidWorld;
+  patch?: WorldPatch[];
 }
+
+export interface WorldPatch { path: string[]; value?: unknown; remove?: true }
 
 export interface ExecutionEngine {
   runReady(nodes: WorkNode[], signal?: AbortSignal): Promise<CandidateResult[]>;

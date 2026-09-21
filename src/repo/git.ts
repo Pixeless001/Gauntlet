@@ -39,6 +39,19 @@ export async function changedFiles(cwd: string, baseline?: Baseline): Promise<Fi
   return [...new Set([...Object.keys(baseline.files), ...Object.keys(current)])].filter((path) => baseline.files[path]?.hash !== current[path]?.hash).sort().map((path) => lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
 }
 
+export async function captureBinaryDiff(cwd: string, base: string | null): Promise<string | null> {
+  if (!base) return null;
+  const tracked = await git(cwd, ["diff", "--binary", base]);
+  if (tracked.exitCode !== 0) return null;
+  const untracked = await git(cwd, ["ls-files", "--others", "--exclude-standard"]);
+  if (untracked.exitCode !== 0) return null;
+  const additions = await Promise.all(untracked.stdout.trim().split("\n").filter(Boolean).map(async (path) => {
+    const result = await git(cwd, ["diff", "--no-index", "--binary", "--", "/dev/null", path]);
+    return result.exitCode === 1 ? result.stdout : "";
+  }));
+  return `${tracked.stdout}${additions.join("")}`;
+}
+
 function parseNumstat(line: string): FileDelta { const [added = "0", removed = "0", path = ""] = line.split("\t"); return { path, added: Number(added) || 0, removed: Number(removed) || 0 }; }
 function lineDelta(path: string, before: string[], after: string[]): FileDelta {
   let prefix = 0; while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix++;

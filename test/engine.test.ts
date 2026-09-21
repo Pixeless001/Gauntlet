@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GauntletEngine } from "../src/core/engine.js";
 import { GraphEventStore } from "../src/work/event-store.js";
+import { ArtifactStore } from "../src/output/store.js";
 import type { CounterfactualEnvironment } from "../src/verify/counterfactual.js";
 import { run } from "../src/repo/process.js";
 import { execFile as execFileCallback } from "node:child_process";
@@ -35,6 +36,18 @@ test("validated implementation records logical promotion", async () => {
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "source.ts"), "export const value = 1;\n");
     const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "promotion"); await writeFile(join(cwd, "source.ts"), "export const value = 2;\n"); await engine.finish("promotion");
     assert.ok((await new GraphEventStore(cwd).read("promotion")).some((event) => event.type === "PATCH_PROMOTED"));
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("clean git tasks retain an exact local patch artifact for promotion", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-patch-artifact-"));
+  try {
+    await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "source.ts"), "export const value = 1;\n");
+    await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+    const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "patch"); await writeFile(join(cwd, "source.ts"), "export const value = 2;\n"); await writeFile(join(cwd, "new.ts"), "export const added = true;\n"); await engine.finish("patch");
+    const proposed = (await new GraphEventStore(cwd).read("patch")).find((event) => event.type === "RESULT_PROPOSED" && event.nodeId === "implementation")!;
+    assert.ok(proposed.candidate?.patchRef); assert.match((await new ArtifactStore(cwd).raw(proposed.candidate!.patchRef!)).toString(), /-export const value = 1/); assert.match((await new ArtifactStore(cwd).raw(proposed.candidate!.patchRef!)).toString(), /new file mode/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { captureBaseline, changedFiles } from "../repo/git.js";
+import { captureBaseline, captureBinaryDiff, changedFiles } from "../repo/git.js";
 import { detectRepository } from "../repo/detect.js";
 import { inspectTestIntegrity } from "../verify/test-integrity.js";
 import { selectVerification } from "../verify/selector.js";
@@ -279,7 +279,12 @@ export class GauntletEngine {
     if (machinePassed && state.control.uncertainty) for (const kind of Object.keys(state.control.uncertainty) as (keyof typeof state.control.uncertainty)[]) if (state.control.uncertainty[kind] !== "irrelevant" && hasSufficientProof(kind, supplied)) state.control.uncertainty[kind] = "resolved";
     state.world = { ...state.world, uncertainties: Object.entries(state.control.uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof state.control.uncertainty) };
     state.world = initializeWork(state.world);
-    const evidenceRefs = results.map((result) => result.proof).filter((item): item is string => Boolean(item));
+    const verificationEvidenceRefs = results.map((result) => result.proof).filter((item): item is string => Boolean(item));
+    const patch = state.baseline.status.length === 0 ? await captureBinaryDiff(this.cwd, state.baseline.head) : null;
+    const patchRef = patch && changes.length
+      ? (await new ArtifactStore(this.cwd).put(state.id, { operation: "git diff --binary", target: state.baseline.head ?? undefined, input: state.baseline.head ?? "filesystem", output: patch, status: "pass", semanticDescription: "Task-local candidate patch", paths: changes.map((change) => change.path), symbols: [], processor: "diff" }, state.activities.length, state.contract.goal, "patch applicability and scope")).artifactRef
+      : undefined;
+    const evidenceRefs = [...verificationEvidenceRefs, ...(patchRef ? [patchRef] : [])];
     const artifacts = await Promise.all(evidenceRefs.map(async (ref) => {
       try {
         const store = new ArtifactStore(this.cwd), metadata = await store.metadata(ref), output = await store.raw(ref);
@@ -288,7 +293,7 @@ export class GauntletEngine {
     }));
     const selectedTests = plan.checks.filter((check) => check.id.includes("test"));
     const evaluation = {
-      commandPassed: results.length === plan.checks.length && results.every((result) => result.status === "pass"), artifactsPresent: evidenceRefs.length === results.length && artifacts.length === results.length,
+      commandPassed: results.length === plan.checks.length && results.every((result) => result.status === "pass"), artifactsPresent: verificationEvidenceRefs.length === results.length && artifacts.length === evidenceRefs.length,
       artifactHashesValid: artifacts.every(Boolean), staticChecksPassed: results.filter((result) => !result.id.includes("test")).every((result) => result.status === "pass"),
       testsPassed: selectedTests.every((check) => results.some((result) => result.id === check.id && result.status === "pass")),
       acceptanceEvidence: machinePassed && evidenceRefs.length > 0, preservationEvidence: !state.findings.some((finding) => finding.blocking) && supplied.every((proof) => proof !== "test" || results.some((result) => result.id.includes("test") && result.status === "pass")),
@@ -305,7 +310,7 @@ export class GauntletEngine {
       return {
         nodeId: node.id, attempt: node.attempt, executor: node.executor, inputFingerprint: state.world.fingerprint.value,
         claims: node.id === "implementation" ? (changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]) : ["Candidate verification evidence collected"],
-        artifactRefs: evidenceRefs, evidenceRefs, affectedPaths, unresolved: [], ...(state.baseline.head ? { baseRevision: state.baseline.head } : {}),
+        artifactRefs: evidenceRefs, evidenceRefs, affectedPaths, unresolved: [], ...(patchRef ? { patchRef } : {}), ...(state.baseline.head ? { baseRevision: state.baseline.head } : {}),
         approachFingerprint: approachFingerprint({ mechanism: node.kind, target: affectedPaths.join(",") || node.id, assumptions: state.world.rules }),
       };
     });
@@ -336,7 +341,7 @@ export class GauntletEngine {
       state.world = applyCandidateEvaluation(state.world, nodeId, decision);
       if (decision.disposition === "validated") {
         await recordGraph("RESULT_VALIDATED", nodeId);
-        if (nodeId === "implementation") await recordGraph("PATCH_PROMOTED", nodeId, "Validated against the current non-isolated working tree");
+        if (nodeId === "implementation") await recordGraph("PATCH_PROMOTED", nodeId, patchRef ? "Validated task-local patch against the current non-isolated working tree" : "Validated against the current non-isolated working tree");
       }
       else if (decision.disposition === "stale") await recordGraph("RESULT_STALE", nodeId, decision.reasons.join("; "));
       else if (decision.disposition === "rejected") await recordGraph("RESULT_REJECTED", nodeId, decision.reasons.join("; "));
