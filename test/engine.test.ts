@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GauntletEngine } from "../src/core/engine.js";
+import { GraphEventStore } from "../src/work/event-store.js";
 import type { CounterfactualEnvironment } from "../src/verify/counterfactual.js";
 import { run } from "../src/repo/process.js";
 import { execFile as execFileCallback } from "node:child_process";
@@ -25,6 +26,15 @@ test("engine executes a task lifecycle against its task-start baseline", async (
     const result = await engine.finish("task-1");
     assert.equal(result.files, 1); assert.equal(result.verified, true); assert.equal(result.firstPass, true);
     assert.equal(JSON.parse(await readFile(join(cwd, ".gauntlet", "last-result.json"), "utf8")).taskId, "task-1");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("validated implementation records logical promotion", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-promotion-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "source.ts"), "export const value = 1;\n");
+    const engine = new GauntletEngine(cwd); await engine.start("Change source.ts", "promotion"); await writeFile(join(cwd, "source.ts"), "export const value = 2;\n"); await engine.finish("promotion");
+    assert.ok((await new GraphEventStore(cwd).read("promotion")).some((event) => event.type === "PATCH_PROMOTED"));
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

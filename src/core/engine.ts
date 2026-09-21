@@ -334,7 +334,10 @@ export class GauntletEngine {
       await recordGraph("RESULT_PROPOSED", nodeId);
       const decision = evaluateCandidate(state.world, state.world.work.nodes[nodeId]!, evaluation);
       state.world = applyCandidateEvaluation(state.world, nodeId, decision);
-      if (decision.disposition === "validated") await recordGraph("RESULT_VALIDATED", nodeId);
+      if (decision.disposition === "validated") {
+        await recordGraph("RESULT_VALIDATED", nodeId);
+        if (nodeId === "implementation") await recordGraph("PATCH_PROMOTED", nodeId, "Validated against the current non-isolated working tree");
+      }
       else if (decision.disposition === "stale") await recordGraph("RESULT_STALE", nodeId, decision.reasons.join("; "));
       else if (decision.disposition === "rejected") await recordGraph("RESULT_REJECTED", nodeId, decision.reasons.join("; "));
       return decision;
