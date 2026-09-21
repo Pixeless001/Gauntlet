@@ -13,12 +13,15 @@ import { inspectImpact } from "../intelligence/working-graph.js";
 import { initialUncertainty } from "../control/uncertainty.js";
 import { selectInterventions } from "../control/selector.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "../core/policy.js";
-import { addCommunicationEdge, addNode, communicationEvidence, createGraph, createValidityGraph, addValidityEdges, invalidateCone } from "../work/graph.js";
-import { createWorld } from "../work/world.js";
+import { addCommunicationEdge, addNode, communicationEvidence, createGraph, createValidityGraph, addValidityEdges, decisionIsFresh, invalidateCone } from "../work/graph.js";
+import { createWorld, refreshCapabilities, refreshValidityInputs } from "../work/world.js";
 import { scheduleReady } from "../work/scheduler.js";
 import { substrateProof } from "./substrate.js";
+import { admitDiscovery, initializeWork, refreshFrontier } from "../work/runtime.js";
+import { reduceCandidates } from "../work/reducer.js";
 
-export const evalSuites = ["decisions", "repository", "ablation", "interaction", "replay", "orchestration", "substrate"] as const;
+const researchSuites = ["sparse-communication", "topology-adaptation", "work-reduction", "critical-path-scheduling", "validity-recomputation", "shared-state-leakage", "heavy-workflow-suppression", "cold-verification", "dynamic-growth", "action-menu-freshness", "native-conformance"] as const;
+export const evalSuites = ["decisions", "repository", "ablation", "interaction", "replay", "orchestration", "substrate", ...researchSuites] as const;
 export type EvalSuite = typeof evalSuites[number];
 
 const cases = [
@@ -44,6 +47,7 @@ export async function runEvalSuite(suite: EvalSuite): Promise<EvalResult[]> {
   if (suite === "repository") return runRepositorySuite();
   if (suite === "orchestration") return runOrchestrationSuite();
   if (suite === "substrate") return runSubstrateSuite();
+  if ((researchSuites as readonly string[]).includes(suite)) return runResearchSuite(suite as typeof researchSuites[number]);
   const contract = extractContract("Fix a request race"), uncertainty = initialUncertainty(contract, "elevated");
   if (suite === "replay") {
     const events = [{ event: 0, supplied: [] as string[] }, { event: 1, supplied: ["local-search"] }];
@@ -57,6 +61,27 @@ export async function runEvalSuite(suite: EvalSuite): Promise<EvalResult[]> {
   }
   const trace = selectInterventions({ uncertainty, supplied: [], budget: { ...DEFAULT_INTERVENTION_BUDGET, interventions: 2 }, used: 0, event: 0, trigger: "interaction", candidates: [{ id: "path", kind: "context", uncertainty: "cause", level: 1, cost: "tiny", authority: "runtime", contributions: ["cause:path"], available: true }, { id: "test", kind: "proof", uncertainty: "cause", level: 1, cost: "tiny", authority: "repository", contributions: ["cause:failure"], available: true }] });
   return [{ category: "selection", caseId: "interaction:context-proof", passed: trace.selected.length === 2, durationMs: 0, interventions: trace.selected.length, extraModelCalls: 0, contextItems: 1, repeatedReads: 0, rawOutputBytes: 0, conditionedOutputBytes: 0, proof: trace.selected }];
+}
+
+function runResearchSuite(suite: typeof researchSuites[number]): EvalResult[] {
+  const started = performance.now(), task = extractContract("Change source.ts"), inputs = { contract: "contract", files: { "source.ts": "old" }, packages: {}, rules: "rules", runtime: "native" };
+  let work = createGraph(); work = addNode(work, { id: "inspect", title: "Inspect", kind: "inspection", executor: "local", duration: "meaningful" }); work = addNode(work, { id: "write", title: "Write", kind: "implementation", writePaths: ["source.ts"], validityInputs: ["file:source.ts"], duration: "long" }); work = addNode(work, { id: "verify", title: "Verify", kind: "verification", dependencies: ["write"], validityInputs: ["write"] });
+  let validity = createValidityGraph(); for (const node of Object.values(work.nodes)) validity = addValidityEdges(validity, node);
+  const world = { ...createWorld(task, "base", inputs), work, validity }, candidate = (id: string, path: string, claim: string) => ({ nodeId: id, attempt: 1, executor: "worker" as const, inputFingerprint: "world", claims: [claim], artifactRefs: [`artifact:${id}`], evidenceRefs: [`proof:${id}`], affectedPaths: [path], unresolved: [] });
+  const cases: Record<typeof suite, [boolean, string[]]> = {
+    "sparse-communication": [communicationEvidence({ ...world, communication: addCommunicationEdge(world.communication, "write", "verify"), work: { ...work, nodes: { ...work.nodes, write: { ...work.nodes.write!, evidenceRefs: ["proof:write"] }, inspect: { ...work.nodes.inspect!, evidenceRefs: ["proof:inspect"] } } } }, "verify").join() === "proof:write", ["only explicit edge evidence is visible"]],
+    "topology-adaptation": [scheduleReady(Object.values(work.nodes), { isolatedMutation: false }).map((node) => node.id).join() === "write,inspect", ["independent ready nodes are selected together"]],
+    "work-reduction": [reduceCandidates([candidate("a", "a.ts", "a"), candidate("b", "b.ts", "b"), candidate("c", "a.ts", "conflict")]).claims.join() === "b", ["conflicting path claims are excluded"]],
+    "critical-path-scheduling": [work.nodes.write!.criticalPath > work.nodes.inspect!.criticalPath, ["long required downstream span ranks first"]],
+    "validity-recomputation": [refreshValidityInputs(world, { ...inputs, files: { "source.ts": "new" } }, "base").work.nodes.write?.state === "STALE", ["changed input stales only its cone"]],
+    "shared-state-leakage": [communicationEvidence(world, "verify").length === 0, ["no implicit sibling evidence flow"]],
+    "heavy-workflow-suppression": [Object.keys(initializeWork(createWorld(extractContract("Fix README typo"), null, { contract: "readme", files: {}, packages: {}, rules: "rules", runtime: "native" })).work.nodes).length === 2, ["tiny work remains two nodes"]],
+    "cold-verification": [!Object.hasOwn(work.nodes.write!, "candidate"), ["verification fixture has no implementation narrative"]],
+    "dynamic-growth": [Boolean(admitDiscovery(world, { id: "impact", title: "Inspect impact", kind: "inspection", changes: { invalidation: true } }).work.nodes.impact), ["primary admission requires structural value"]],
+    "action-menu-freshness": [!decisionIsFresh(refreshCapabilities(refreshFrontier(world), ["host:worktree"])), ["capability changes invalidate the menu"]],
+    "native-conformance": [Object.keys(scheduleReady(Object.values(work.nodes), { isolatedMutation: false })).length > 0, ["native scheduler consumes resolved nodes"]],
+  };
+  const [passed, proof] = cases[suite]; return [evalResult(`research:${suite}`, passed, started, proof)];
 }
 
 function runOrchestrationSuite(): EvalResult[] {

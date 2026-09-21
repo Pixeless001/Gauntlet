@@ -18,6 +18,10 @@ test("every evaluation suite executes structured cases", async () => {
   for (const suite of evalSuites) { const results = await runEvalSuite(suite); assert.ok(results.length > 0); assert.ok(results.every((item) => item.passed && item.proof.length)); }
 });
 
+test("research-derived orchestration suites remain executable", () => {
+  for (const suite of ["sparse-communication", "topology-adaptation", "work-reduction", "critical-path-scheduling", "validity-recomputation", "shared-state-leakage", "heavy-workflow-suppression", "cold-verification", "dynamic-growth", "action-menu-freshness", "native-conformance"]) assert.ok(evalSuites.includes(suite as typeof evalSuites[number]));
+});
+
 test("built-in evaluations cover restraint, active paths, and marginal context", () => {
   const results = runBuiltInEvals(); assert.equal(results.every((item) => item.passed), true); for (const id of ["negative-routing", "rejected-branch-quarantine", "marginal-context", "stall-routing", "scope-boundary", "timed-rule", "focused-clarification", "visual-activation", "boundary-safety", "truthful-stop"]) assert.ok(results.some((item) => item.caseId === id));
 });

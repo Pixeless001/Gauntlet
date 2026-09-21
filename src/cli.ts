@@ -38,7 +38,7 @@ async function main() {
   else if (command === "activity") { const id = args[0], json = args[1]; if (!id || !json) throw new Error("Usage: gauntlet activity <task-id> '<json>'"); const result = await new GauntletEngine(cwd).activity(id, activitySchema.parse(JSON.parse(json))); if (result.continuation) console.log(JSON.stringify({ type: "compaction", continuation: result.continuation }, null, 2)); }
   else if (command === "finish") { const id = args[0]; if (!id) throw new Error("Usage: gauntlet finish <task-id>"); console.log(formatSummary(await new GauntletEngine(cwd).finish(id))); }
   else if (command === "hook") { if (args[0] === "auto") await runAutoHook(args[1]); else await runHook(harnessNameSchema.parse(args[0]), args[1]); }
-  else console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite decisions|repository|ablation|interaction|replay]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>`);
+  else console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite ${evalSuites.join("|")}]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>`);
 }
 
 main().catch((error: unknown) => { console.error(pc.red(error instanceof Error ? error.message : String(error))); process.exitCode = 1; });
