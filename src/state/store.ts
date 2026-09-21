@@ -70,8 +70,10 @@ export class StateStore {
 function normalizeWorld(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   const task = value as Record<string, unknown>, world = task.world;
-  if (!world || typeof world !== "object" || "contract" in world) return task;
-  return { ...task, world: { ...(world as Record<string, unknown>), contract: task.contract } };
+  if (!world || typeof world !== "object") return task;
+  const current = world as Record<string, unknown>, contract = task.contract as { expectedFrontier?: unknown } | undefined;
+  if ("contract" in current && "expectedScope" in current) return task;
+  return { ...task, world: { ...current, ...("contract" in current ? {} : { contract: task.contract }), ...("expectedScope" in current ? {} : { expectedScope: Array.isArray(contract?.expectedFrontier) ? contract.expectedFrontier : [] }) } };
 }
 
 async function importStoredReferences(repository: string, taskId: string, value: unknown): Promise<unknown> {

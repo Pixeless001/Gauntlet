@@ -4,9 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GraphEventStore } from "../src/work/event-store.js";
-import { initializeWork, observeWorldActivity, proposeNodeResult } from "../src/work/runtime.js";
-import { createWorld, refreshValidityInputs } from "../src/work/world.js";
-import { addNode, addValidityEdges, createGraph, createValidityGraph } from "../src/work/graph.js";
+import { admitDiscovery, initializeWork, observeWorldActivity, proposeNodeResult } from "../src/work/runtime.js";
+import { createWorld, refreshCapabilities, refreshValidityInputs } from "../src/work/world.js";
+import { addNode, addValidityEdges, createGraph, createValidityGraph, selectDecisionNode } from "../src/work/graph.js";
 import { contract } from "./support.js";
 
 const inputs = { contract: "contract", files: { "source.ts": "before" }, packages: { zod: "4.6.4" }, rules: "rules", runtime: "native" };
@@ -39,4 +39,11 @@ test("rule and package fingerprint changes stale only their explicit dependants"
   const world = { ...createWorld(contract("Inspect API"), "base", inputs), work, validity };
   const refreshed = refreshValidityInputs(world, { ...inputs, packages: { zod: "4.7.0" } }, "base");
   assert.equal(refreshed.work.nodes.api?.state, "STALE"); assert.equal(refreshed.work.nodes.unrelated?.state, "READY"); assert.equal(refreshed.decision.valid, false);
+});
+
+test("capability changes invalidate action menus and dynamic work requires primary admission", () => {
+  const world = initializeWork(createWorld(contract("Change source.ts"), null, inputs)), changed = refreshCapabilities(world, ["host:worktree"]);
+  assert.equal(changed.decision.valid, false); assert.throws(() => selectDecisionNode(changed, "implementation"), /stale/);
+  const admitted = admitDiscovery(world, { id: "inspect", title: "Inspect affected callers", kind: "inspection", changes: { scheduling: true }, validityInputs: ["contract"] });
+  assert.ok(admitted.work.nodes.inspect); assert.throws(() => admitDiscovery(world, { id: "worker-node", title: "Worker node", kind: "inspection", changes: { scheduling: true } }, "worker"), /cannot create/);
 });

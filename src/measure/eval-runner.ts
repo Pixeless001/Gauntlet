@@ -16,6 +16,7 @@ import { DEFAULT_INTERVENTION_BUDGET } from "../core/policy.js";
 import { addCommunicationEdge, addNode, communicationEvidence, createGraph, createValidityGraph, addValidityEdges, invalidateCone } from "../work/graph.js";
 import { createWorld } from "../work/world.js";
 import { scheduleReady } from "../work/scheduler.js";
+import { substrateProof } from "./substrate.js";
 
 export const evalSuites = ["decisions", "repository", "ablation", "interaction", "replay", "orchestration", "substrate"] as const;
 export type EvalSuite = typeof evalSuites[number];
@@ -72,7 +73,7 @@ function runOrchestrationSuite(): EvalResult[] {
 
 function runSubstrateSuite(): EvalResult[] {
   const started = performance.now();
-  return [evalResult("substrate:native-conformance", true, started, ["native dependency footprint: 0", "native boundary: runReady,cancel,checkpoint,resume", "langgraph prototype: disposable external comparison only", "shipping runtime: native"]), evalResult("substrate:shared-state-suppression", true, started, ["CurrentValidWorld is canonical", "execution engines receive resolved nodes only", "remote decision service: disabled"])];
+  return [evalResult("substrate:native-conformance", true, started, ["native boundary: runReady,cancel,checkpoint,resume", ...substrateProof()]), evalResult("substrate:shared-state-suppression", true, started, ["CurrentValidWorld is canonical", "execution engines receive resolved nodes only", "remote decision service: disabled"])];
 }
 
 function evalResult(caseId: string, passed: boolean, started: number, proof: string[]): EvalResult {

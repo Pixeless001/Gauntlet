@@ -38,6 +38,15 @@ test("legacy rewriting leaves current v3 evidence fields untouched", () => {
   assert.deepEqual(migrateTaskV1(current), current);
 });
 
+test("stored pre-world V3 sessions gain their exact task contract without losing the session", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-v3-world-"));
+  try {
+    const value = { ...parseTaskState(migrateTaskV2(migrateTaskV1({ version: 1, id: "task", repository: cwd, startedAt: new Date(0).toISOString(), contract: { intent: "Change source.ts", acceptanceCriteria: [], explicitPaths: ["source.ts"], constraints: [] }, baseline: { head: null, status: [], dependencies: [], files: {}, tests: {} }, workingSet: [], repositoryFacts: [], activities: [], findings: [], attempts: 1 }))), version: 3 as const };
+    const legacyWorld = { ...value.world } as Record<string, unknown>; delete legacyWorld.contract; delete legacyWorld.expectedScope; await mkdir(join(cwd, ".gauntlet", "tasks"), { recursive: true }); await writeFile(join(cwd, ".gauntlet", "tasks", "task.json"), JSON.stringify({ ...value, world: legacyWorld }));
+    const restored = await new StateStore(cwd).loadTask("task"); assert.equal(restored.world.contract.intent, "Change source.ts"); assert.deepEqual(restored.world.expectedScope, value.contract.expectedFrontier);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("first-version stored outputs become artifact handles", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-state-migration-")), [, proofRef] = LEGACY_KEYS;
   try {

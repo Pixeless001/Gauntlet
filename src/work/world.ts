@@ -23,6 +23,20 @@ export function refreshValidityInputs(world: CurrentValidWorld, inputs: Omit<Wor
   return refreshWorld(next, inputs, canonicalRevision);
 }
 
+export function refreshCapabilities(world: CurrentValidWorld, capabilities: string[]): CurrentValidWorld {
+  const next = [...new Set(capabilities)].sort();
+  if (JSON.stringify(next) === JSON.stringify(world.capabilities)) return world;
+  const { value: _value, ...inputs } = world.fingerprint, runtime = fingerprint({ runtime: inputs.runtime, capabilities: next });
+  return { ...refreshValidityInputs(world, { ...inputs, runtime }, world.canonicalRevision), capabilities: next };
+}
+
+export function refreshRules(world: CurrentValidWorld, rules: string[]): CurrentValidWorld {
+  const next = [...new Set(rules)].sort();
+  if (JSON.stringify(next) === JSON.stringify(world.rules)) return world;
+  const { value: _value, ...inputs } = world.fingerprint;
+  return { ...refreshValidityInputs(world, { ...inputs, rules: fingerprint(next) }, world.canonicalRevision), rules: next };
+}
+
 function changedSources(current: WorldFingerprint, next: Omit<WorldFingerprint, "value">, currentRevision: string | null, nextRevision: string | null): string[] {
   const sources: string[] = [];
   if (current.contract !== next.contract) sources.push("contract");

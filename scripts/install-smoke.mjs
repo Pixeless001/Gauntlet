@@ -16,6 +16,8 @@ try {
   if (!help.stdout.includes("Gauntlet")) throw new Error("Installed command did not start");
   await execute(process.execPath, [cli, "install", "--harness", "codex"], { cwd: consumer });
   if (!(await readFile(join(consumer, ".codex", "hooks.json"), "utf8")).includes("--gauntlet-managed")) throw new Error("Installed command did not configure hooks");
+  await execute(process.execPath, [cli, "install", "--harness", "opencode"], { cwd: consumer });
+  if (!(await readFile(join(consumer, ".opencode", "plugin", "gauntlet.js"), "utf8")).includes("--gauntlet-managed")) throw new Error("Installed command did not configure the OpenCode plugin");
 } finally {
   await rm(workspace, { recursive: true, force: true });
 }

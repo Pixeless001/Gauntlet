@@ -4,8 +4,9 @@ import type { UncertaintyState } from "../control/uncertainty.js";
 import { unresolved } from "../control/uncertainty.js";
 import type { ProofKind } from "./proof-selector.js";
 import type { CurrentValidWorld } from "../work/types.js";
+import { decisionIsFresh } from "../work/graph.js";
 
-export interface CompletionDecision { status: "complete" | "incomplete" | "semantic-verification-required"; reasons: string[]; missingProof: ProofKind[] }
+export interface CompletionDecision { status: "complete" | "incomplete" | "semantic-verification-required"; reasons: string[]; missingInvariants?: string[]; missingProof: ProofKind[]; proofRefs?: string[] }
 
 export function decideCompletion(contract: TaskContract, findings: Finding[], uncertainty: UncertaintyState, supplied: ProofKind[], world?: CurrentValidWorld): CompletionDecision {
   const available = new Set(supplied), missingProof = requiredPreservationProof(contract).filter((kind) => !available.has(kind));
@@ -15,9 +16,12 @@ export function decideCompletion(contract: TaskContract, findings: Finding[], un
     ...material.map((kind) => `unresolved ${kind}`),
     ...missingProof.map((kind) => `missing preservation ${kind}`),
     ...(world ? Object.values(world.work.nodes).filter((node) => node.required && !["VALIDATED", "COLLAPSED"].includes(node.state)).map((node) => `required node ${node.id} is ${node.state.toLowerCase()}`) : []),
+    ...(world?.facts ? Object.values(world.facts).filter((fact) => fact.status === "stale").map((fact) => `stale fact ${fact.id}`) : []),
+    ...(world && !decisionIsFresh(world) ? ["action menu is stale"] : []),
   ];
   const semantic = world && Object.values(world.work.nodes).some((node) => node.state === "CANDIDATE" && (node.candidate?.unresolved.length ?? 0) > 0);
-  return { status: semantic ? "semantic-verification-required" : reasons.length ? "incomplete" : "complete", reasons: [...new Set(reasons)], missingProof: [...new Set(missingProof)] };
+  const missingInvariants = [...new Set(reasons)], proofRefs = [...new Set([...findings.flatMap((finding) => finding.proof), ...(world?.evidenceRefs ?? [])])];
+  return { status: semantic ? "semantic-verification-required" : missingInvariants.length ? "incomplete" : "complete", reasons: missingInvariants, missingInvariants, missingProof: [...new Set(missingProof)], proofRefs };
 }
 
 export function requiredPreservationProof(contract: TaskContract): ProofKind[] {

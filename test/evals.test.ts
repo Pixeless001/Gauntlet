@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { evalSuites, runBuiltInEvals, runEvalSuite, saveEvalRun } from "../src/measure/eval-runner.js";
 import { interventionRoi, selectionQuality } from "../src/measure/evals.js";
 import { ARCHITECTURE_FIXTURES } from "../src/measure/fixtures.js";
+import { SUBSTRATE_COMPARISON } from "../src/measure/substrate.js";
 
 test("built-in routing and silence evals persist concrete proof", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-evals-"));
@@ -33,4 +34,8 @@ test("selection quality reports activation, silence, and state-change rates sepa
   const outcomes = [{ activated: true, expected: true, duplicate: false, changedState: true, proofFound: true, level: 2 as const }, { activated: false, expected: false, duplicate: false, changedState: false }];
   assert.deepEqual(selectionQuality(outcomes), { falseActivationRate: 0, missedActivationRate: 0, duplicateInterventionRate: 0, averageActivations: 0.5, averageDepth: 2, localRate: 1, silentRate: 0.5, stateChangeRate: 1, proofYieldRate: 1 });
   assert.deepEqual(interventionRoi(outcomes), { activations: 1, actionable: 1, stateChanges: 1, proofYieldRate: 1, stateChangeRate: 1 });
+});
+
+test("substrate comparison covers the non-shipping LangGraph probe and native selection", () => {
+  assert.ok(Object.keys(SUBSTRATE_COMPARISON).length >= 14); assert.equal(SUBSTRATE_COMPARISON.coldContext?.native, "communication graph projections");
 });

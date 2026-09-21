@@ -133,6 +133,12 @@ export function decisionIsFresh(world: CurrentValidWorld): boolean {
   return world.decision.valid && world.decision.revision === world.revision && world.decision.fingerprint === world.fingerprint.value;
 }
 
+export function selectDecisionNode(world: CurrentValidWorld, id: string): WorkNode {
+  if (!decisionIsFresh(world)) throw new Error("Decision snapshot is stale");
+  if (!world.decision.candidates.includes(id)) throw new Error(`Node is not in the decision menu: ${id}`);
+  return requiredNode(world.work, id);
+}
+
 export function fingerprint(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 
 function descendants(graph: ValidityGraph, source: string): string[] {

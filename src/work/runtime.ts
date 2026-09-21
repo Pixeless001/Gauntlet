@@ -1,8 +1,8 @@
 import type { TaskState } from "../core/task-state.js";
 import type { TaskActivity } from "../core/events.js";
-import { addCommunicationEdge, addNode, addValidityEdges, claimOwnership, invalidateCone, proposeResult, readyFrontier, refreshDecision, retryNode, startNode } from "./graph.js";
+import { addCommunicationEdge, addNode, addValidityEdges, claimOwnership, invalidateCone, nodeEarnsStructure, proposeResult, readyFrontier, refreshDecision, retryNode, startNode } from "./graph.js";
 import { refreshWorld } from "./world.js";
-import type { CandidateResult, CurrentValidWorld, WorkNode } from "./types.js";
+import type { CandidateResult, CurrentValidWorld, GraphProposal, WorkNode } from "./types.js";
 
 export function initializeWork(world: CurrentValidWorld): CurrentValidWorld {
   if (world.work.nodes.implementation && world.work.nodes.verification) return refreshFrontier(world);
@@ -51,3 +51,10 @@ export function refreshFrontier(world: CurrentValidWorld): CurrentValidWorld {
 }
 
 export function requiredGraphNodes(world: CurrentValidWorld): WorkNode[] { return Object.values(world.work.nodes).filter((node) => node.required); }
+
+export function admitDiscovery(world: CurrentValidWorld, proposal: GraphProposal, proposer: "primary" | "worker" = "primary"): CurrentValidWorld {
+  if (proposer === "worker") throw new Error("Workers cannot create work nodes");
+  if (!nodeEarnsStructure(proposal)) return world;
+  const work = addNode(world.work, proposal), validity = addValidityEdges(world.validity, work.nodes[proposal.id]!);
+  return refreshFrontier({ ...world, revision: world.revision + 1, work, validity });
+}
