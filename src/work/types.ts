@@ -121,6 +121,8 @@ export interface GraphEvent {
   fingerprint?: string;
   attempt?: number;
   candidate?: CandidateResult;
+  /** Compact materialization used only to recover an event persisted before its checkpoint. */
+  world?: CurrentValidWorld;
 }
 
 export interface ExecutionEngine {

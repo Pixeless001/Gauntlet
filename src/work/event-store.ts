@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { CurrentValidWorld, GraphEvent } from "./types.js";
@@ -11,7 +11,7 @@ export class GraphEventStore {
     const directory = this.directory(taskId); await mkdir(directory, { recursive: true, mode: 0o700 });
     return withLock(join(directory, ".events-lock"), async () => {
       const events = await this.read(taskId), next = { ...event, sequence: (events.at(-1)?.sequence ?? 0) + 1 };
-      await writeAtomic(join(directory, "events.jsonl"), `${[...events, next].map((item) => JSON.stringify(item)).join("\n")}\n`);
+      await appendFile(join(directory, "events.jsonl"), `${JSON.stringify({ ...next, world: { ...world, appliedEvent: next.sequence } })}\n`, { mode: 0o600 });
       await writeAtomic(join(directory, "world.json"), `${JSON.stringify({ sequence: next.sequence, world: { ...world, appliedEvent: next.sequence } })}\n`);
       return next;
     });
@@ -27,8 +27,13 @@ export class GraphEventStore {
   }
 
   async resume(taskId: string): Promise<{ sequence: number; world: CurrentValidWorld } | null> {
-    try { return JSON.parse(await readFile(join(this.directory(taskId), "world.json"), "utf8")) as { sequence: number; world: CurrentValidWorld }; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+    const events = await this.read(taskId);
+    let checkpoint: { sequence: number; world: CurrentValidWorld } | null = null;
+    try { checkpoint = JSON.parse(await readFile(join(this.directory(taskId), "world.json"), "utf8")) as { sequence: number; world: CurrentValidWorld }; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const recovered = events.at(-1);
+    if (recovered?.world && (!checkpoint || recovered.sequence > checkpoint.sequence)) return { sequence: recovered.sequence, world: recovered.world };
+    return checkpoint;
   }
 
   private directory(taskId: string): string {

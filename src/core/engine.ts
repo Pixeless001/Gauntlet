@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { captureBaseline, changedFiles } from "../repo/git.js";
 import { detectRepository } from "../repo/detect.js";
 import { inspectTestIntegrity } from "../verify/test-integrity.js";
@@ -47,7 +47,9 @@ import { GraphEventStore } from "../work/event-store.js";
 import { initializeWork, observeWorldActivity, proposeNodeResult, refreshFrontier } from "../work/runtime.js";
 import { applyCandidateEvaluation, evaluateCandidate } from "../verify/candidate.js";
 import { createWorld } from "../work/world.js";
-import { collapseValidated, fingerprint as worldFingerprint } from "../work/graph.js";
+import { collapseValidated, fingerprint as worldFingerprint, retryNode, selectDecisionNode } from "../work/graph.js";
+import { approachFingerprint } from "../work/precheck.js";
+import { NativeExecutionEngine } from "../execution/native-engine.js";
 
 export interface StartResult { state: TaskState; injection: string; clarification: string | null; directive: RuntimeDirective }
 export interface ActivityResult { state: TaskState; continuation: ContinuationRecord | null; directive: RuntimeDirective }
@@ -277,23 +279,57 @@ export class GauntletEngine {
     state.world = { ...state.world, uncertainties: Object.entries(state.control.uncertainty).filter(([, status]) => status === "open" || status === "partial").map(([kind]) => kind as keyof typeof state.control.uncertainty) };
     state.world = initializeWork(state.world);
     const evidenceRefs = results.map((result) => result.proof).filter((item): item is string => Boolean(item));
+    const artifacts = await Promise.all(evidenceRefs.map(async (ref) => {
+      try {
+        const store = new ArtifactStore(this.cwd), metadata = await store.metadata(ref), output = await store.raw(ref);
+        return metadata.outputHash === createHash("sha256").update(output).digest("hex") && metadata.status === "pass";
+      } catch { return false; }
+    }));
+    const selectedTests = plan.checks.filter((check) => check.id.includes("test"));
     const evaluation = {
-      commandPassed: results.length > 0 && results.every((result) => result.status === "pass"), artifactsPresent: true, artifactHashesValid: true,
-      staticChecksPassed: results.every((result) => result.status === "pass"), testsPassed: true,
-      acceptanceEvidence: machinePassed, preservationEvidence: !state.findings.some((finding) => finding.blocking), coldVerificationPassed: machinePassed, ownershipValid: true,
-      baseCompatible: state.world.canonicalRevision === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
+      commandPassed: results.length === plan.checks.length && results.every((result) => result.status === "pass"), artifactsPresent: evidenceRefs.length === results.length && artifacts.length === results.length,
+      artifactHashesValid: artifacts.every(Boolean), staticChecksPassed: results.filter((result) => !result.id.includes("test")).every((result) => result.status === "pass"),
+      testsPassed: selectedTests.every((check) => results.some((result) => result.id === check.id && result.status === "pass")),
+      acceptanceEvidence: machinePassed && evidenceRefs.length > 0, preservationEvidence: !state.findings.some((finding) => finding.blocking) && supplied.every((proof) => proof !== "test" || results.some((result) => result.id.includes("test") && result.status === "pass")),
+      coldVerificationPassed: machinePassed && artifacts.every(Boolean), ownershipValid: true,
+      baseCompatible: state.world.canonicalRevision === state.baseline.head && (await captureBaseline(this.cwd)).head === state.baseline.head, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
     };
     const graphEvents = new GraphEventStore(this.cwd);
-    const recordGraph = async (type: "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
+    const recordGraph = async (type: "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "PATCH_PROMOTED" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
       const node = state.world.work.nodes[nodeId], candidate = type === "RESULT_PROPOSED" ? node?.candidate : undefined;
       state.world = { ...state.world, appliedEvent: (await graphEvents.append(state.id, { at: new Date().toISOString(), type, nodeId, ...(detail ? { detail } : {}), ...(node ? { attempt: node.attempt } : {}), ...(candidate ? { candidate } : {}) }, state.world)).sequence };
     };
-    const completeNode = async (nodeId: "implementation" | "verification", executor: "primary" | "verifier", claims: string[]) => {
+    const executor = new NativeExecutionEngine(this.cwd, async (node) => {
+      const affectedPaths = node.id === "implementation" ? changes.map((change) => change.path) : [];
+      return {
+        nodeId: node.id, attempt: node.attempt, executor: node.executor, inputFingerprint: state.world.fingerprint.value,
+        claims: node.id === "implementation" ? (changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]) : ["Candidate verification evidence collected"],
+        artifactRefs: evidenceRefs, evidenceRefs, affectedPaths, unresolved: [], ...(state.baseline.head ? { baseRevision: state.baseline.head } : {}),
+        approachFingerprint: approachFingerprint({ mechanism: node.kind, target: affectedPaths.join(",") || node.id, assumptions: state.world.rules }),
+      };
+    });
+    const completeNode = async (nodeId: "implementation" | "verification") => {
       const before = state.world.work.nodes[nodeId]!;
       if (["VALIDATED", "COLLAPSED"].includes(before.state)) return { disposition: "validated" as const, reasons: [] };
-      if (["REJECTED", "STALE"].includes(before.state)) await recordGraph("NODE_RETRIED", nodeId, before.rejection?.constraint);
+      if (["REJECTED", "STALE"].includes(before.state)) {
+        state.world = { ...state.world, work: retryNode(state.world.work, nodeId), revision: state.world.revision + 1 };
+        await recordGraph("NODE_RETRIED", nodeId, before.rejection?.constraint);
+      }
+      state.world = refreshFrontier(state.world);
+      selectDecisionNode(state.world, nodeId);
       if (["READY", "REJECTED", "STALE"].includes(before.state)) await recordGraph("NODE_STARTED", nodeId);
-      state.world = proposeNodeResult(state.world, nodeId, { executor, claims, artifactRefs: evidenceRefs, evidenceRefs, affectedPaths: changes.map((change) => change.path), unresolved: [], ...(state.baseline.head ? { baseRevision: state.baseline.head } : {}) });
+      const [candidate] = await executor.runReady([selectDecisionNode(state.world, nodeId)]);
+      if (!candidate) throw new Error(`Native execution did not return a candidate: ${nodeId}`);
+      const { nodeId: _nodeId, attempt: _attempt, inputFingerprint: _fingerprint, ...proposal } = candidate;
+      try { state.world = proposeNodeResult(state.world, nodeId, proposal); }
+      catch (error) {
+        const reason = (error as Error).message;
+        if (!reason.startsWith("Rejected approach requires")) throw error;
+        const node = state.world.work.nodes[nodeId]!;
+        state.world = { ...state.world, revision: state.world.revision + 1, work: { ...state.world.work, version: state.world.work.version + 1, nodes: { ...state.world.work.nodes, [nodeId]: { ...node, state: "REJECTED" } } } };
+        await recordGraph("RESULT_REJECTED", nodeId, reason);
+        return { disposition: "rejected" as const, reasons: [reason] };
+      }
       await recordGraph("RESULT_PROPOSED", nodeId);
       const decision = evaluateCandidate(state.world, state.world.work.nodes[nodeId]!, evaluation);
       state.world = applyCandidateEvaluation(state.world, nodeId, decision);
@@ -302,8 +338,8 @@ export class GauntletEngine {
       else if (decision.disposition === "rejected") await recordGraph("RESULT_REJECTED", nodeId, decision.reasons.join("; "));
       return decision;
     };
-    const implementationDecision = await completeNode("implementation", "primary", changes.length ? ["Candidate repository change observed"] : ["No repository change observed"]);
-    if (implementationDecision.disposition === "validated") await completeNode("verification", "verifier", ["Candidate verification evidence collected"]);
+    const implementationDecision = await completeNode("implementation");
+    if (implementationDecision.disposition === "validated") await completeNode("verification");
     const validated = Object.values(state.world.work.nodes).filter((node) => node.state === "VALIDATED").map((node) => node.id);
     state.world = collapseValidated(state.world);
     for (const nodeId of validated.filter((id) => state.world.work.nodes[id]?.state === "COLLAPSED")) await recordGraph("GRAPH_COLLAPSED", nodeId);
