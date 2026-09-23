@@ -12,6 +12,10 @@ import { evalSuites, runEvalSuite, saveEvalRun, type EvalSuite } from "./measure
 import { runEvolution } from "./knowledge/evolution.js";
 import { ARCHITECTURE_AUDIT, summarizeArchitectureAudit, validateAuditProof } from "./measure/architecture-audit.js";
 import { ArtifactStore, parseArtifactHandle, type ArtifactDetail } from "./output/store.js";
+import { detectDrivers, getDriver, type BenchmarkHarness } from "./benchmark/agents.js";
+import { runBenchmark } from "./benchmark/runner.js";
+import { buildReport, formatReport, saveReport } from "./benchmark/report.js";
+import { benchmarkTasks } from "./benchmark/fixtures.js";
 
 const [command = "help", ...args] = process.argv.slice(2), cwd = process.cwd();
 const option = (name: string) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
@@ -38,7 +42,25 @@ async function main() {
   else if (command === "activity") { const id = args[0], json = args[1]; if (!id || !json) throw new Error("Usage: gauntlet activity <task-id> '<json>'"); const result = await new GauntletEngine(cwd).activity(id, activitySchema.parse(JSON.parse(json))); if (result.continuation) console.log(JSON.stringify({ type: "compaction", continuation: result.continuation }, null, 2)); }
   else if (command === "finish") { const id = args[0]; if (!id) throw new Error("Usage: gauntlet finish <task-id>"); console.log(formatSummary(await new GauntletEngine(cwd).finish(id))); }
   else if (command === "hook") { if (args[0] === "auto") await runAutoHook(args[1]); else await runHook(harnessNameSchema.parse(args[0]), args[1]); }
-  else console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite ${evalSuites.join("|")}]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>`);
+  else if (command === "benchmark") {
+    const benchmarkHarnesses = ["codex", "claude-code", "opencode"] as const;
+    const requestedHarness = option("--harness"), usage = `Usage: gauntlet benchmark --harness <codex|claude-code|opencode> --model <id> [--endpoint url] [--api-key-env VAR] [--task id] [--repeats N] [--timeout-ms ms]\n       gauntlet benchmark --list-drivers\n       gauntlet benchmark --list-models --harness <h> [--endpoint url] [--api-key-env VAR]`;
+    if (args.includes("--list-drivers")) { console.log(JSON.stringify(await detectDrivers(), null, 2)); }
+    else if (args.includes("--list-models")) {
+      if (!requestedHarness || !benchmarkHarnesses.includes(requestedHarness as BenchmarkHarness)) throw new Error(usage);
+      const models = await getDriver(requestedHarness as BenchmarkHarness).listModels({ endpoint: option("--endpoint"), apiKeyEnv: option("--api-key-env") });
+      if (!models.length) throw new Error("No models reported. For codex/claude-code pass --endpoint (any OpenAI-compatible base URL); for opencode run `opencode auth login` first.");
+      console.log(models.join("\n"));
+    } else {
+      if (!requestedHarness || !benchmarkHarnesses.includes(requestedHarness as BenchmarkHarness) || !option("--model")) throw new Error(usage);
+      const tasks = args.filter((_, index) => index > 0 && args[index - 1] === "--task");
+      const outcomes = await runBenchmark({ harness: requestedHarness as BenchmarkHarness, model: option("--model"), endpoint: option("--endpoint"), apiKeyEnv: option("--api-key-env"), tasks, repeats: Number(option("--repeats") ?? 1), timeoutMs: Number(option("--timeout-ms") ?? 600_000) });
+      const report = buildReport(outcomes, { harness: requestedHarness, model: option("--model"), endpoint: option("--endpoint") });
+      console.log(formatReport(report)); console.log(`\nReport: ${await saveReport(cwd, report)}`);
+      if (report.summary.treatment.acceptanceRate < report.summary.baseline.acceptanceRate) process.exitCode = 1;
+    }
+  }
+  else console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite ${evalSuites.join("|")}]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>\n  benchmark --harness <codex|claude-code|opencode> --model <id> [--endpoint url] [--api-key-env VAR] [--task id] [--repeats N]\n  benchmark --list-drivers | --list-models --harness <h> [--endpoint url] [--api-key-env VAR]`);
 }
 
 main().catch((error: unknown) => { console.error(pc.red(error instanceof Error ? error.message : String(error))); process.exitCode = 1; });

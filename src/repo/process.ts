@@ -18,6 +18,7 @@ function launch(command: string, args: string[], cwd: string, env: NodeJS.Proces
 
 function observe(child: ChildProcess, label: string, timeoutMs: number, maxBytes: number, started: number): Promise<CommandResult | (Extract<Launch, { code: string }> & { stderr: string })> {
   return new Promise((resolve) => {
+    child.stdin?.end();
     let stdout = "", stderr = "", timedOut = false;
     const append = (current: string, chunk: Buffer) => (current + chunk.toString()).slice(-maxBytes);
     child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
@@ -32,11 +33,15 @@ function observe(child: ChildProcess, label: string, timeoutMs: number, maxBytes
 
 const unavailable = (label: string, started: number, stderr: string): CommandResult => ({ command: label, exitCode: null, stdout: "", stderr, durationMs: performance.now() - started, timedOut: false });
 
-export async function run(command: string, args: string[], cwd: string, timeoutMs = 60_000, maxBytes = 256_000): Promise<CommandResult> {
+export async function run(command: string, args: string[], cwd: string, timeoutMs = 60_000, maxBytes = 256_000, env?: NodeJS.ProcessEnv): Promise<CommandResult> {
   const started = performance.now();
-  const env = { ...process.env, CI: "1" };
+  // NODE_TEST_CONTEXT is node's internal test-runner protocol switch; an inherited value makes
+  // spawned `node --test` children exit without running their tests.
+  const environment: NodeJS.ProcessEnv = { ...process.env, CI: "1", ...env };
+  delete environment.NODE_TEST_CONTEXT;
+  for (const key of Object.keys(environment)) if (environment[key] === undefined) delete environment[key];
   const label = [command, ...args].join(" ");
-  const first = launch(command, args, cwd, env);
+  const first = launch(command, args, cwd, environment);
   const outcome = "child" in first
     ? await observe(first.child, label, timeoutMs, maxBytes, started)
     : { code: first.code, message: first.message, stderr: "" };
@@ -44,7 +49,7 @@ export async function run(command: string, args: string[], cwd: string, timeoutM
     // Retry only when the direct spawn could not start at all; real executables never take this path.
     if (process.platform === "win32" && (outcome.code === "ENOENT" || outcome.code === "EINVAL")) {
       const line = [command, ...args].map(quoteForCmd).join(" ");
-      const retry = launch(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", line], cwd, env);
+      const retry = launch(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", line], cwd, environment);
       if ("child" in retry) {
         const result = await observe(retry.child, label, timeoutMs, maxBytes, started);
         if ("code" in result) return unavailable(label, started, result.message);

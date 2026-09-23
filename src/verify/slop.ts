@@ -31,7 +31,10 @@ export function analyzeSlopLines(path: string, lines: string[]): SlopSignal[] {
 
 export async function inspectSlop(cwd: string, state: TaskState, changes: FileDelta[]): Promise<Finding[]> {
   const base = state.baseline.head;
-  if (!base) return [];
+  return base ? inspectSlopForDiff(cwd, base, changes) : [];
+}
+
+export async function inspectSlopForDiff(cwd: string, base: string, changes: FileDelta[]): Promise<Finding[]> {
   const addedByFile = await captureAddedLines(cwd, base);
   const findings: Finding[] = [];
   const changed = new Map(changes.filter((change) => change.added > 0).map((change) => [change.path, change]));
