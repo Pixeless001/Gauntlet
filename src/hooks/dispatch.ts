@@ -63,8 +63,7 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   }
   if (event.type === "before_stop") {
     if (!await existsTask(engine, id)) return {};
-    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.completion === "complete";
-    if (!result.files && !result.checksRun && !state.findings.length) return {};
+    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.completion === "complete" || result.files === 0;
     const alreadyContinued = result.attempts > 1;
     if (!acceptable && !alreadyContinued) await engine.retry(id);
     return stopOutput(harness, summary, acceptable, alreadyContinued);

@@ -31,7 +31,7 @@ export async function changedFiles(cwd: string, baseline?: Baseline): Promise<Fi
       if (ambiguous.has(path)) {
         if (baseline.files[path]?.hash !== current[path]?.hash) deltas.set(path, lineDelta(path, baseline.files[path]?.lineHashes ?? [], current[path]?.lineHashes ?? []));
         else deltas.delete(path);
-      } else if (!deltas.has(path)) deltas.set(path, lineDelta(path, [], current[path]?.lineHashes ?? []));
+      } else if (!deltas.has(path) && (current[path] || !baseline.status.includes(path))) deltas.set(path, lineDelta(path, [], current[path]?.lineHashes ?? []));
     }
     return [...deltas.values()].sort((a, b) => a.path.localeCompare(b.path));
   }

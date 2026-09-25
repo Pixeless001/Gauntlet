@@ -1,0 +1,4 @@
+const marker = "--gauntlet-managed";
+export function opencodePluginSource(node, cli) {
+    return `// ${marker}\nexport const Gauntlet = async ({ directory }) => {\n  const send = async (event, payload) => {\n    const child = Bun.spawn([${JSON.stringify(node)}, ${JSON.stringify(cli)}, "hook", "opencode", event], { cwd: directory, stdin: new TextEncoder().encode(JSON.stringify({ ...payload, cwd: directory, hook_event_name: event })) });\n    await child.exited;\n  };\n  return {\n    event: async ({ event }) => {\n      if (event.type === "session.created") await send(event.type, event.properties ?? {});\n    },\n    "tool.execute.after": async (input, output) => send("tool.execute.after", { ...input, result: output }),\n    "tool.execute.error": async (input, error) => send("tool.execute.error", { ...input, error, is_error: true }),\n  };\n};\n`;
+}

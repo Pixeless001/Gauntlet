@@ -81,3 +81,17 @@ test("cached facts and measurements rewrite to current field names", async () =>
     for (const path of [join(gauntlet, "repo-profile.json"), join(knowledge, "patterns.json"), join(gauntlet, "last-result.json")]) { const content = await readFile(path, "utf8"); assert.equal([sourceKey, supportKey, contradictKey, proofKey].some((key) => new RegExp(`"${key}"`).test(content)), false); }
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("repo-sized baselines round-trip through the sidecar instead of tripping the state cap", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gauntlet-baseline-"));
+  try {
+    const store = new StateStore(dir), state = { ...taskState("Fix big repo"), repository: dir };
+    state.baseline.index = { mode: "git", head: null, files: Array.from({ length: 10_000 }, (_, i) => `archive-refs/some/deep/path/file-${i}.txt`), tests: [], configs: [], dirty: [], fingerprints: {} };
+    await store.saveTask(state);
+    assert.deepEqual((await store.loadTask(state.id)).baseline, state.baseline);
+    const path = join(dir, ".gauntlet", "tasks", "task.baseline.json"), before = (await readFile(path)).byteLength;
+    await store.saveTask(await store.loadTask(state.id));
+    assert.equal((await readFile(path)).byteLength, before);
+    assert.ok(!("index" in JSON.parse(await readFile(join(dir, ".gauntlet", "tasks", "task.json"), "utf8")).baseline));
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
