@@ -83,6 +83,7 @@ export interface TaskState {
   activities: StoredTaskActivity[];
   findings: Finding[];
   attempts: number;
+  finishedAt?: string;
   control: ControlState;
   world: CurrentValidWorld;
 }
@@ -136,7 +137,7 @@ export const taskStateSchema = z.object({
   clarifications: z.array(z.object({ question: z.string().max(1_000), answer: z.string().max(2_000), at: z.string().datetime() })).max(1),
   baseline: z.object({ head: z.string().nullable(), status: stringList(1_000), dependencies: stringList(1_000), files: z.record(z.string(), z.object({ hash: z.string(), lineHashes: stringList(100_000) })), tests: z.record(z.string(), z.object({ assertions: stringList(10_000), skipped: z.number().int().nonnegative() })), publicExports: z.record(z.string(), stringList(500)).optional(), index: z.unknown().optional() }),
   workingSet: stringList(500), repositoryFacts: z.array(z.unknown()).max(500), conventions: z.array(z.unknown()).max(100).optional(), rules: z.array(z.unknown()).max(100).optional(), conventionMetrics: z.object({ hints: z.number(), primitives: z.number(), interventions: z.number(), dependencyConflicts: z.number(), duplicates: z.number(), architectureBypasses: z.number() }).optional(),
-  activities: z.array(activitySchema.omit({ toolPayload: true })).max(1_000), findings: z.array(z.object({ code: z.string(), severity: z.enum(["info", "warning", "error"]), blocking: z.boolean().optional(), message: z.string(), proof: stringList(200) })).max(500), attempts: z.number().int().positive(), control: controlSchema, world: worldSchema,
+  activities: z.array(activitySchema.omit({ toolPayload: true })).max(1_000), findings: z.array(z.object({ code: z.string(), severity: z.enum(["info", "warning", "error"]), blocking: z.boolean().optional(), message: z.string(), proof: stringList(200) })).max(500), attempts: z.number().int().positive(), finishedAt: z.string().datetime().optional(), control: controlSchema, world: worldSchema,
 });
 
 export function createControlState(contract: TaskContract, rootId = "task-root", activeSkills: SkillName[] = []): ControlState {

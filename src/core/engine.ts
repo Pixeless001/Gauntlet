@@ -86,6 +86,7 @@ export class GauntletEngine {
   }
 
   async start(intent: string, id: string = randomUUID()): Promise<StartResult> {
+    await this.store.archiveFinished(id);
     try {
       let state = await this.store.loadTask(id);
       if (!state.world.work.nodes.implementation || !state.world.work.nodes.verification) state = await this.store.updateTaskWithWorldEvent(id, (value) => {
@@ -404,6 +405,10 @@ export class GauntletEngine {
     const history = await graphEvents.read(state.id), value = measure(state, changes, results, new Date(), completion, { frontierWaitMs: frontierWait(history), maxFrontier, semanticSynthesis, workerCandidates: history.filter((event) => event.type === "RESULT_PROPOSED" && event.candidate?.executor === "worker").length });
     await this.store.saveTask(state); await this.store.saveMeasurement(value);
     return value;
+  }
+
+  async close(id: string): Promise<void> {
+    await this.store.updateTask(id, (state) => { state.finishedAt = new Date().toISOString(); });
   }
 
   async retry(id: string): Promise<void> {

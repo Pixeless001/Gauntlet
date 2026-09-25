@@ -71,6 +71,8 @@ export async function dispatchHook(harness, input, nativeEvent) {
         const alreadyContinued = result.attempts > 1;
         if (!acceptable && !alreadyContinued)
             await engine.retry(id);
+        else
+            await engine.close(id);
         return stopOutput(harness, summary, acceptable, alreadyContinued);
     }
     return {};

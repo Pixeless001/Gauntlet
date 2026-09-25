@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchHook, harnessForEvent } from "../src/hooks/dispatch.js";
@@ -112,6 +112,22 @@ test("hooks fired from a subdirectory keep state and baseline at the repository 
     assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "sub", cwd: sub })).decision, undefined);
     assert.equal(JSON.parse(await readFile(join(root, ".gauntlet/last-result.json"), "utf8")).files, 0);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a prompt after an accepted stop starts a fresh task instead of reusing the old baseline", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-turns-hook-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
+    const identity = { session_id: "turns", cwd }, stop = { hook_event_name: "Stop", ...identity };
+    await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", ...identity, prompt: "What does this repo do" });
+    assert.equal((await dispatchHook("claude-code", stop)).decision, undefined); await writeFile(join(cwd, "notes.txt"), "written between turns\n");
+    await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", ...identity, prompt: "Explain the layout" });
+    assert.equal((await dispatchHook("claude-code", stop)).decision, undefined);
+    const tasks = join(cwd, ".gauntlet/tasks"), names = await readdir(tasks), current = names.find((name) => /^native-[a-f0-9]{24}\.json$/.test(name))!;
+    assert.equal(names.filter((name) => /^native-[a-f0-9]{24}-\d+\.json$/.test(name)).length, 1);
+    const state = JSON.parse(await readFile(join(tasks, current), "utf8")); assert.equal(state.contract.intent, "Explain the layout"); assert.equal(state.attempts, 1);
+    assert.equal(JSON.parse(await readFile(join(cwd, ".gauntlet/last-result.json"), "utf8")).files, 0);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("a turn with no file changes is not gated on completion", async () => {

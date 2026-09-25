@@ -47,5 +47,6 @@ export declare class GauntletEngine {
     activity(id: string, activity: TaskActivity): Promise<ActivityResult>;
     lifecycle(id: string, phase: "pre_compact" | "post_compact"): Promise<LifecycleResult>;
     finish(id: string): Promise<TaskMeasurement>;
+    close(id: string): Promise<void>;
     retry(id: string): Promise<void>;
 }

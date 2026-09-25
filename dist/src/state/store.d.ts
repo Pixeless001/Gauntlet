@@ -7,6 +7,8 @@ export declare class StateStore {
     constructor(cwd: string);
     private taskPath;
     private baselinePath;
+    /** A finished task belongs to an earlier prompt; move it aside (session events first, or replay would resurrect it) so the next prompt gets its own baseline and attempt count. */
+    archiveFinished(id: string): Promise<void>;
     private atomicWrite;
     saveTask(state: TaskState): Promise<void>;
     private persist;

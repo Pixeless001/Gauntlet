@@ -81,6 +81,7 @@ export class GauntletEngine {
         return this.store.updateTask(id, (state) => { state.clarifications = [{ question, answer, at: new Date().toISOString() }]; });
     }
     async start(intent, id = randomUUID()) {
+        await this.store.archiveFinished(id);
         try {
             let state = await this.store.loadTask(id);
             if (!state.world.work.nodes.implementation || !state.world.work.nodes.verification)
@@ -484,6 +485,9 @@ export class GauntletEngine {
         await this.store.saveTask(state);
         await this.store.saveMeasurement(value);
         return value;
+    }
+    async close(id) {
+        await this.store.updateTask(id, (state) => { state.finishedAt = new Date().toISOString(); });
     }
     async retry(id) {
         await this.store.updateTask(id, (state) => { state.attempts += 1; state.control.lifecycle.corrections += 1; });

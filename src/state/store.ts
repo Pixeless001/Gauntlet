@@ -20,6 +20,19 @@ export class StateStore {
   constructor(cwd: string) { this.repository = resolve(cwd); this.directory = join(this.repository, ".gauntlet"); }
   private taskPath(id: string) { if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw new Error("Invalid task id"); return join(this.directory, "tasks", `${id}.json`); }
   private baselinePath(id: string) { return this.taskPath(id).replace(/\.json$/, ".baseline.json"); }
+  /** A finished task belongs to an earlier prompt; move it aside (session events first, or replay would resurrect it) so the next prompt gets its own baseline and attempt count. */
+  async archiveFinished(id: string): Promise<void> {
+    let finishedAt: unknown;
+    try { finishedAt = (JSON.parse(await readFile(this.taskPath(id), "utf8")) as { finishedAt?: unknown }).finishedAt; } catch { return; }
+    if (typeof finishedAt !== "string") return;
+    const archived = `${id}-${Date.parse(finishedAt)}`, sessions = join(this.directory, "sessions");
+    await this.withTaskLock(id, async () => {
+      try {
+        for (const [from, to] of [[join(sessions, id), join(sessions, archived)], [this.baselinePath(id), this.baselinePath(archived)], [this.taskPath(id), this.taskPath(archived)]] as const)
+          await rename(from, to).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
+      } catch { /* keep reusing the finished task rather than fail the hook */ }
+    });
+  }
   private async atomicWrite(path: string, value: unknown, limit = MAX_STATE_BYTES) {
     const content = JSON.stringify(value, null, 2);
     if (Buffer.byteLength(content) > limit) throw new Error(`Gauntlet state exceeds ${limit / 1000}KB`);

@@ -17,6 +17,27 @@ export class StateStore {
     taskPath(id) { if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id))
         throw new Error("Invalid task id"); return join(this.directory, "tasks", `${id}.json`); }
     baselinePath(id) { return this.taskPath(id).replace(/\.json$/, ".baseline.json"); }
+    /** A finished task belongs to an earlier prompt; move it aside (session events first, or replay would resurrect it) so the next prompt gets its own baseline and attempt count. */
+    async archiveFinished(id) {
+        let finishedAt;
+        try {
+            finishedAt = JSON.parse(await readFile(this.taskPath(id), "utf8")).finishedAt;
+        }
+        catch {
+            return;
+        }
+        if (typeof finishedAt !== "string")
+            return;
+        const archived = `${id}-${Date.parse(finishedAt)}`, sessions = join(this.directory, "sessions");
+        await this.withTaskLock(id, async () => {
+            try {
+                for (const [from, to] of [[join(sessions, id), join(sessions, archived)], [this.baselinePath(id), this.baselinePath(archived)], [this.taskPath(id), this.taskPath(archived)]])
+                    await rename(from, to).catch((error) => { if (error.code !== "ENOENT")
+                        throw error; });
+            }
+            catch { /* keep reusing the finished task rather than fail the hook */ }
+        });
+    }
     async atomicWrite(path, value, limit = MAX_STATE_BYTES) {
         const content = JSON.stringify(value, null, 2);
         if (Buffer.byteLength(content) > limit)

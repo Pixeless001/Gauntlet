@@ -149,6 +149,7 @@ export interface TaskState {
     activities: StoredTaskActivity[];
     findings: Finding[];
     attempts: number;
+    finishedAt?: string;
     control: ControlState;
     world: CurrentValidWorld;
 }
@@ -253,6 +254,7 @@ export declare const taskStateSchema: z.ZodObject<{
         proof: z.ZodArray<z.ZodString>;
     }, z.core.$strip>>;
     attempts: z.ZodNumber;
+    finishedAt: z.ZodOptional<z.ZodString>;
     control: z.ZodObject<{
         uncertainty: z.ZodObject<{
             api: z.ZodTypeAny<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>;
