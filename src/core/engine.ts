@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { captureBaseline, captureBinaryDiff, changedFiles } from "../repo/git.js";
+import { run } from "../repo/process.js";
 import { detectRepository } from "../repo/detect.js";
 import { inspectTestIntegrity } from "../verify/test-integrity.js";
 import { selectVerification } from "../verify/selector.js";
@@ -308,6 +309,8 @@ export class GauntletEngine {
     }));
     const selectedTests = plan.checks.filter((check) => check.id.includes("test"));
     const currentBaseline = await captureBaseline(this.cwd);
+    // Commits made during the task fast-forward HEAD; only a non-descendant HEAD (checkout, reset, rebase) is a real base change.
+    const headCompatible = currentBaseline.head === state.baseline.head || (!!state.baseline.head && !!currentBaseline.head && (await run("git", ["merge-base", "--is-ancestor", state.baseline.head, currentBaseline.head], this.cwd, 10_000)).exitCode === 0);
     const patchApplicable = patchRef && state.baseline.head ? await verifyIsolatedPatch(this.cwd, state.baseline.head, patch!) : true;
     const evaluation = {
       commandPassed: results.length === plan.checks.length && results.every((result) => result.status === "pass"), artifactsPresent: verificationEvidenceRefs.length === results.length && artifacts.length === evidenceRefs.length,
@@ -315,7 +318,7 @@ export class GauntletEngine {
       testsPassed: selectedTests.every((check) => results.some((result) => result.id === check.id && result.status === "pass")),
       acceptanceEvidence: machinePassed && evidenceRefs.length > 0, preservationEvidence: !state.findings.some((finding) => finding.blocking) && supplied.every((proof) => proof !== "test" || results.some((result) => result.id.includes("test") && result.status === "pass")),
       coldVerificationPassed: machinePassed && artifacts.every(Boolean), ownershipValid: true,
-      baseCompatible: state.world.canonicalRevision === state.baseline.head && currentBaseline.head === state.baseline.head, patchApplicable, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
+      baseCompatible: state.world.canonicalRevision === state.baseline.head && headCompatible, patchApplicable, scopeValid: scope.hardSignals.length === 0, rulesValid: !state.findings.some((finding) => finding.code.startsWith("convention-") && finding.blocking),
     };
     const graphEvents = new GraphEventStore(this.cwd);
     const recordGraph = async (type: "NODE_CREATED" | "DEPENDENCY_ADDED" | "NODE_READY" | "NODE_STARTED" | "NODE_RETRIED" | "RESULT_PROPOSED" | "RESULT_VALIDATED" | "RESULT_REJECTED" | "RESULT_STALE" | "PATCH_PROMOTED" | "GRAPH_COLLAPSED", nodeId: string, detail?: string) => {
@@ -402,7 +405,7 @@ export class GauntletEngine {
     state.world = collapseValidated(state.world);
     for (const nodeId of validated.filter((id) => state.world.work.nodes[id]?.state === "COLLAPSED")) await recordGraph("GRAPH_COLLAPSED", nodeId);
     state.world = refreshFrontier(state.world);
-    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied, state.world, { repositoryRevision: currentBaseline.head, evidenceValid: artifacts.length === evidenceRefs.length && artifacts.every(Boolean) });
+    const completion = decideCompletion(state.contract, state.findings, state.control.uncertainty, supplied, state.world, { repositoryRevision: headCompatible ? state.world.canonicalRevision : currentBaseline.head, evidenceValid: artifacts.length === evidenceRefs.length && artifacts.every(Boolean) });
     for (const proof of completion.missingProof) state.findings.push({ code: `missing-preservation-${proof}`, severity: "error", blocking: true, message: `Required preservation proof is unavailable: ${proof}`, proof: [] });
     const passed = machinePassed && outstanding.length === 0 && completion.status === "complete";
     recordVerification(state, passed, evidenceRefs, supplied);
