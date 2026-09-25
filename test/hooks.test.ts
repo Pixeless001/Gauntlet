@@ -59,6 +59,15 @@ test("compact lifecycle returns a bounded re-grounding record", async () => {
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("stop stays silent when the turn changed nothing and ran no checks", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-readonly-hook-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: {} })); await writeFile(join(cwd, "package-lock.json"), "{}");
+    await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", session_id: "ro", cwd, prompt: "Is gauntlet active?" });
+    assert.deepEqual(await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "ro", cwd }), {});
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("subsequent prompts preserve the task-start baseline", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-lifecycle-hook-"));
   try {
@@ -86,7 +95,7 @@ test("Gauntlet permits at most one correction without trusting native counters",
     await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.test.ts"), "test('x', () => 1);\n");
     const identity = { hook_event_name: "UserPromptSubmit", session_id: "correction", cwd, prompt: "Change tests" }; await dispatchHook("claude-code", identity); await unlink(join(cwd, "task.test.ts"));
     assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd })).decision, "block");
-    const second = await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd }); assert.equal(second.decision, undefined); assert.match(String(second.systemMessage), /INCOMPLETE/);
+    const second = await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd }); assert.deepEqual(second, {});
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
