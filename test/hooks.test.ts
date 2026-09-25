@@ -90,6 +90,15 @@ test("Gauntlet permits at most one correction without trusting native counters",
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("a turn with no file changes is not gated on completion", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-nochange-hook-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
+    await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", session_id: "ask", cwd, prompt: "What does this repo do" });
+    assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "ask", cwd })).decision, undefined);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 for (const fixture of [
   { harness: "codex" as const, start: "UserPromptSubmit", activity: "PostToolUse", stop: "Stop" },
   { harness: "claude-code" as const, start: "UserPromptSubmit", activity: "PostToolUseFailure", stop: "Stop" },
@@ -97,8 +106,8 @@ for (const fixture of [
 ]) test(`${fixture.harness} executes its native lifecycle contract`, async () => {
   const cwd = await mkdtemp(join(tmpdir(), `gauntlet-${fixture.harness}-contract-`));
   try {
-    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
-    const identity = { session_id: "contract-session", cwd }; await dispatchHook(fixture.harness, { ...identity, prompt: "Maintain contract" }, fixture.start); await dispatchHook(fixture.harness, { ...identity, tool_name: "Shell", error_message: "failed" }, fixture.activity);
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.ts"), "before\n");
+    const identity = { session_id: "contract-session", cwd }; await dispatchHook(fixture.harness, { ...identity, prompt: "Maintain contract" }, fixture.start); await dispatchHook(fixture.harness, { ...identity, tool_name: "Shell", error_message: "failed" }, fixture.activity); await writeFile(join(cwd, "task.ts"), "after\n");
     const output = await dispatchHook(fixture.harness, identity, fixture.stop); assert.ok(fixture.harness === "cursor" ? String(output.followup_message).includes("not clean and verified") : output.decision === "block");
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
