@@ -1,0 +1,7 @@
+{
+  "name": "gauntlet",
+  "owner": { "name": "Pixeless001" },
+  "plugins": [
+    { "name": "gauntlet", "source": "./", "description": "Lightweight workflow control and verification for coding agents" }
+  ]
+}
