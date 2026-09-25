@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GauntletEngine } from "../src/core/engine.js";
 import { MAX_STATE_BYTES } from "../src/core/policy.js";
+import { parseTaskState } from "../src/core/task-state.js";
 import { boundState } from "../src/state/bound.js";
 import { taskState } from "./support.js";
 
@@ -28,6 +29,18 @@ test("dropping old activities rebases every stored activity index", () => {
   boundState(state);
   assert.equal(state.activities.length, 300); assert.equal(state.activities.at(-1)?.target, "cmd 699");
   assert.equal(state.control.lastCompactedActivity, 250); assert.equal(state.control.observations[0]?.lastObserved, 290); assert.deepEqual(state.control.context.recentCompletedTurns, [290]); assert.equal(state.control.lifecycle.lastStableEvent, 100);
+});
+
+test("a worst-case state for every unbounded collection still fits under the cap and stays valid", () => {
+  const state = taskState("Inspect"), long = "x".repeat(480), ref = "artifact://task/t_000001";
+  state.activities = Array.from({ length: 600 }, (_, index) => ({ ...activity(index, "fail"), target: `${index} ${long}` }));
+  state.world.facts = Object.fromEntries(Array.from({ length: 400 }, (_, index) => [`${index % 2 ? "file" : "activity"}:${index} ${long}`, { ...fact(`f${index}`), statement: long }]));
+  state.findings = Array.from({ length: 500 }, (_, index) => ({ code: `finding-${index}`, severity: "warning" as const, message: long, proof: [long, long] }));
+  state.control.decisions = Array.from({ length: 64 }, (_, index) => ({ event: index, trigger: "activity", candidates: [], rejected: [], pressure: { uncertainty: state.control.uncertainty, falseActivationCost: 1, missedActivationCost: 1, budgetRemaining: 1, context: "rising" as const }, stateChange: [long], proofGain: Array.from({ length: 30 }, () => ref) }));
+  state.control.traces = Array.from({ length: 64 }, (_, index) => ({ event: index, trigger: "activity", candidates: [long], selected: [long], activations: [], rejected: [] }));
+  state.control.execution.events = Array.from({ length: 512 }, (_, index) => ({ index, type: "command" as const, target: long, outcome: "pass", proofRef: ref }));
+  boundState(state);
+  assert.ok(JSON.stringify(state).length < MAX_STATE_BYTES, `${JSON.stringify(state).length} bytes`); parseTaskState(state);
 });
 
 test("a long run of long commands stays under the state size cap", async () => {
