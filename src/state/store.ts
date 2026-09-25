@@ -7,6 +7,7 @@ import { MAX_STATE_BYTES } from "../core/policy.js";
 import { migrateTaskV1 } from "./v1-migration.js";
 import { migrateLegacyKeys } from "./v1-migration.js";
 import { migrateTaskV2 } from "./v2-migration.js";
+import { boundState } from "./bound.js";
 import { ArtifactStore } from "../output/store.js";
 import { GraphEventStore } from "../work/event-store.js";
 import type { GraphEvent } from "../work/types.js";
@@ -34,15 +35,15 @@ export class StateStore {
     });
   }
   private async atomicWrite(path: string, value: unknown, limit = MAX_STATE_BYTES) {
-    const content = JSON.stringify(value, null, 2);
+    const content = JSON.stringify(value);
     if (Buffer.byteLength(content) > limit) throw new Error(`Gauntlet state exceeds ${limit / 1000}KB`);
     const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`; await writeFile(temporary, content, { mode: 0o600 }); await rename(temporary, path);
   }
-  async saveTask(state: TaskState) { const parsed = parseTaskState(state); if (resolve(parsed.repository) !== this.repository) throw new Error("Invalid Gauntlet task state"); await mkdir(join(this.directory, "tasks"), { recursive: true, mode: 0o700 }); await this.persist(parsed); }
+  async saveTask(state: TaskState) { const parsed = parseTaskState(boundState(state)); if (resolve(parsed.repository) !== this.repository) throw new Error("Invalid Gauntlet task state"); await mkdir(join(this.directory, "tasks"), { recursive: true, mode: 0o700 }); await this.persist(parsed); }
   // Repo-sized baseline data (file index, fingerprints, test signatures) lives in a sidecar so it can't trip the task state cap.
   private async persist(state: TaskState) {
     const { files, tests, index, ...small } = state.baseline, sidecar = { files, tests, index }, path = this.baselinePath(state.id);
-    if (await readFile(path, "utf8").catch(() => null) !== JSON.stringify(sidecar, null, 2)) await this.atomicWrite(path, sidecar, MAX_BASELINE_BYTES);
+    if (await readFile(path, "utf8").catch(() => null) !== JSON.stringify(sidecar)) await this.atomicWrite(path, sidecar, MAX_BASELINE_BYTES);
     await this.atomicWrite(this.taskPath(state.id), { ...state, baseline: small });
   }
   async loadTask(id: string): Promise<TaskState> {

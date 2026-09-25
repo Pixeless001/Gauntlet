@@ -10,8 +10,8 @@ export function observeExecution(state, activity) {
         return { investigate: false, causeValidated: false };
     const type = activity.kind === "command" && activity.outcome === "fail" ? "failure" : activity.kind;
     execution.events.push({ index: execution.nextEvent++, type, ...(activity.target ? { target: activity.target } : {}), ...(activity.outcome ? { outcome: activity.outcome } : {}), ...(activity.proofRef ? { proofRef: activity.proofRef } : {}) });
-    if (execution.events.length > 512)
-        execution.events.splice(0, execution.events.length - 512);
+    if (execution.events.length > 128)
+        execution.events.splice(0, execution.events.length - 128);
     const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target);
     const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
     const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && execution.events.filter((item) => item.type === "file_write" && item.target === activity.target).length >= 3);
