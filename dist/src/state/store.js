@@ -9,22 +9,31 @@ import { migrateTaskV2 } from "./v2-migration.js";
 import { ArtifactStore } from "../output/store.js";
 import { GraphEventStore } from "../work/event-store.js";
 import { fingerprint as worldFingerprint } from "../work/graph.js";
+const MAX_BASELINE_BYTES = 32_000_000;
 export class StateStore {
     directory;
     repository;
     constructor(cwd) { this.repository = resolve(cwd); this.directory = join(this.repository, ".gauntlet"); }
     taskPath(id) { if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id))
         throw new Error("Invalid task id"); return join(this.directory, "tasks", `${id}.json`); }
-    async atomicWrite(path, value) {
+    baselinePath(id) { return this.taskPath(id).replace(/\.json$/, ".baseline.json"); }
+    async atomicWrite(path, value, limit = MAX_STATE_BYTES) {
         const content = JSON.stringify(value, null, 2);
-        if (Buffer.byteLength(content) > MAX_STATE_BYTES)
-            throw new Error("Gauntlet state exceeds 256KB");
+        if (Buffer.byteLength(content) > limit)
+            throw new Error(`Gauntlet state exceeds ${limit / 1000}KB`);
         const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
         await writeFile(temporary, content, { mode: 0o600 });
         await rename(temporary, path);
     }
     async saveTask(state) { const parsed = parseTaskState(state); if (resolve(parsed.repository) !== this.repository)
-        throw new Error("Invalid Gauntlet task state"); await mkdir(join(this.directory, "tasks"), { recursive: true, mode: 0o700 }); await this.atomicWrite(this.taskPath(parsed.id), parsed); }
+        throw new Error("Invalid Gauntlet task state"); await mkdir(join(this.directory, "tasks"), { recursive: true, mode: 0o700 }); await this.persist(parsed); }
+    // Repo-sized baseline data (file index, fingerprints, test signatures) lives in a sidecar so it can't trip the task state cap.
+    async persist(state) {
+        const { files, tests, index, ...small } = state.baseline, sidecar = { files, tests, index }, path = this.baselinePath(state.id);
+        if (await readFile(path, "utf8").catch(() => null) !== JSON.stringify(sidecar, null, 2))
+            await this.atomicWrite(path, sidecar, MAX_BASELINE_BYTES);
+        await this.atomicWrite(this.taskPath(state.id), { ...state, baseline: small });
+    }
     async loadTask(id) {
         const path = this.taskPath(id), content = await readFile(path, "utf8");
         if (Buffer.byteLength(content) > MAX_STATE_BYTES)
@@ -36,6 +45,7 @@ export class StateStore {
         catch {
             throw new Error("Invalid Gauntlet task state");
         }
+        raw = await this.joinBaseline(id, raw);
         let migrated = migrateTaskV1(raw);
         if (raw?.version === 1)
             migrated = await importStoredReferences(this.repository, id, migrated);
@@ -53,8 +63,25 @@ export class StateStore {
         if (replay)
             state = parseTaskState(normalizeWorld({ ...state, world: checkpoint.world }));
         if (raw?.version !== 3 || replay || JSON.stringify(raw) !== JSON.stringify(state))
-            await this.atomicWrite(path, state);
+            await this.persist(state);
         return state;
+    }
+    async joinBaseline(id, raw) {
+        const baseline = raw?.baseline;
+        if (!baseline || typeof baseline !== "object" || "files" in baseline)
+            return raw;
+        let side;
+        try {
+            const text = await readFile(this.baselinePath(id), "utf8");
+            if (Buffer.byteLength(text) > MAX_BASELINE_BYTES)
+                throw 0;
+            side = JSON.parse(text);
+        }
+        catch {
+            throw new Error("Invalid Gauntlet task state");
+        }
+        const { head, status, dependencies, publicExports } = baseline;
+        return { ...raw, baseline: { head, status, dependencies, files: side.files, tests: side.tests, ...(publicExports === undefined ? {} : { publicExports }), ...(side.index === undefined ? {} : { index: side.index }) } };
     }
     async updateTask(id, update) {
         return this.withTaskLock(id, async () => { const state = await this.loadTask(id); update(state); await this.saveTask(state); return state; });

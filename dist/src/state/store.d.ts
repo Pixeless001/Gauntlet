@@ -6,9 +6,12 @@ export declare class StateStore {
     private readonly repository;
     constructor(cwd: string);
     private taskPath;
+    private baselinePath;
     private atomicWrite;
     saveTask(state: TaskState): Promise<void>;
+    private persist;
     loadTask(id: string): Promise<TaskState>;
+    private joinBaseline;
     updateTask(id: string, update: (state: TaskState) => void): Promise<TaskState>;
     updateTaskWithWorldEvent(id: string, update: (state: TaskState) => Omit<GraphEvent, "sequence"> | Omit<GraphEvent, "sequence">[] | null): Promise<TaskState>;
     private withTaskLock;
