@@ -39,6 +39,13 @@ test("includes untracked files in the implementation footprint", () => fixture(a
   assert.deepEqual(await changedFiles(cwd, baseline), [{ path: "new.ts", added: 3, removed: 0 }]);
 }));
 
+test("untracked directories dirty at baseline are not counted as changes", () => fixture(async (cwd) => {
+  await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+  await writeFile(join(cwd, "base.txt"), "base\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+  await mkdir(join(cwd, "scratch")); await writeFile(join(cwd, "scratch", "note.txt"), "x\n");
+  assert.deepEqual(await changedFiles(cwd, await captureBaseline(cwd)), []);
+}));
+
 test("binary candidate patches include untracked files", () => fixture(async (cwd) => {
   await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
   await writeFile(join(cwd, "base.ts"), "export const base = 1;\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
