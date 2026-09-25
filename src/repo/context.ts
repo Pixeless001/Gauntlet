@@ -3,6 +3,7 @@ import { basename, dirname, extname, join } from "node:path";
 import type { RepoIndex } from "./index.js";
 import { walk } from "./tests.js";
 import { findRelationships } from "./relationships.js";
+import { selectInstructionSections } from "./instructions.js";
 import type { TaskContract } from "../core/events.js";
 import type { ConventionFact } from "./conventions.js";
 import type { RepositoryLesson } from "./lessons.js";
@@ -35,7 +36,7 @@ export async function selectContext(cwd: string, contract: TaskContract, limit =
     const scope = dirname(path); return scope === "." || targets.some((target) => target === scope || target.startsWith(`${scope}/`));
   }).sort((a, b) => dirname(a).split("/").length - dirname(b).split("/").length || a.localeCompare(b));
   const instructions: string[] = [];
-  for (const path of instructionFiles.slice(-4)) instructions.push(`${path}: ${(await readFile(join(cwd, path), "utf8")).slice(0, 2_000)}`);
+  for (const path of instructionFiles.slice(-4)) instructions.push(`${path}: ${selectInstructionSections(await readFile(join(cwd, path), "utf8"), contract.intent)}`);
   return { entries: selected, instructions, conventions: conventions.slice(0, 3), lessons: [], excluded: marginal.rejected.length };
 }
 

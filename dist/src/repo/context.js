@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 import { walk } from "./tests.js";
 import { findRelationships } from "./relationships.js";
+import { selectInstructionSections } from "./instructions.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
 import { workingGraph } from "../intelligence/working-graph.js";
 import { selectMarginal } from "../context/marginality.js";
@@ -32,7 +33,7 @@ export async function selectContext(cwd, contract, limit = 12, conventions = [],
     }).sort((a, b) => dirname(a).split("/").length - dirname(b).split("/").length || a.localeCompare(b));
     const instructions = [];
     for (const path of instructionFiles.slice(-4))
-        instructions.push(`${path}: ${(await readFile(join(cwd, path), "utf8")).slice(0, 2_000)}`);
+        instructions.push(`${path}: ${selectInstructionSections(await readFile(join(cwd, path), "utf8"), contract.intent)}`);
     return { entries: selected, instructions, conventions: conventions.slice(0, 3), lessons: [], excluded: marginal.rejected.length };
 }
 function contributions(entry) {
