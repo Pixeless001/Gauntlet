@@ -43,7 +43,7 @@ export function formatStats(history: TaskMeasurement[], benchmark: BenchmarkRepo
       `Files touched      ${sum(history, (h) => h.files)}`,
       `Time               ${(ms / 60_000).toFixed(1)} min total, median ${(median(history.map((h) => h.durationMs)) / 1_000).toFixed(1)}s/task`,
       "",
-      `Check output       ${kb(raw)} raw -> ${kb(shown)} shown${raw ? ` (${pct(raw - shown, raw)} cut, ${sum(history, (h) => h.output?.tokensRemoved ?? 0)} tokens)` : ""}`,
+      `Check output       ${kb(raw)} raw -> ${kb(shown)} shown${raw ? ` (${pct(Math.max(0, raw - shown), raw)} cut, ${sum(history, (h) => h.output?.tokensRemoved ?? 0)} tokens)` : ""}`,
       `Repeat work caught ${sum(history, (h) => (h.context?.repeatReadsDetected ?? 0) + (h.context?.repeatSearchesDetected ?? 0))} reads/searches`,
     );
   }

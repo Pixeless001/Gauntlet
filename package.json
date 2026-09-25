@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/src/cli.js",
   "bin": { "gauntlet": "dist/src/cli.js" },
-  "files": ["dist/src", "skills", "hooks", ".codex-plugin", ".claude-plugin", "LICENSE"],
+  "files": ["dist/src", "skills", "commands", "hooks", ".codex-plugin", ".claude-plugin", "LICENSE"],
   "engines": { "node": ">=24" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
