@@ -16,6 +16,7 @@ import { compact, shouldCompact } from "./compact.js";
 import { discoverConventions, selectConventionFacts } from "../repo/conventions.js";
 import { inspectConventionDrift } from "../verify/convention-drift.js";
 import { inspectSlop } from "../verify/slop.js";
+import { inspectCommitRules } from "../repo/commit-rules.js";
 import { DEFAULT_INTERVENTION_BUDGET } from "./policy.js";
 import { assessRisk } from "./risk.js";
 import { loadSkill, skillCandidates } from "./skills.js";
@@ -265,7 +266,7 @@ export class GauntletEngine {
     }
     async finish(id) {
         const state = await this.store.loadTask(id), changes = await changedFiles(this.cwd, state.baseline);
-        const current = [...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests, changes), ...await inspectConventionDrift(this.cwd, state, changes), ...await inspectSlop(this.cwd, state, changes)];
+        const current = [...await evaluateGuards(this.cwd, state, changes), ...await inspectTestIntegrity(this.cwd, state.baseline.tests, changes), ...await inspectConventionDrift(this.cwd, state, changes), ...await inspectSlop(this.cwd, state, changes), ...await inspectCommitRules(this.cwd, state.baseline.head)];
         state.findings = deduplicateFindings(current);
         if (state.conventionMetrics) {
             state.conventionMetrics.dependencyConflicts = state.findings.filter((item) => item.code === "convention-dependency-conflict").length;
