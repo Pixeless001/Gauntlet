@@ -16,7 +16,8 @@ import { ArtifactStore, parseArtifactHandle } from "./output/store.js";
 import { detectDrivers, getDriver } from "./benchmark/agents.js";
 import { runBenchmark } from "./benchmark/runner.js";
 import { buildReport, formatReport, saveReport } from "./benchmark/report.js";
-const [command = "help", ...args] = process.argv.slice(2), cwd = process.cwd();
+import { repositoryRoot } from "./repo/root.js";
+const [command = "help", ...args] = process.argv.slice(2), cwd = repositoryRoot(process.cwd());
 const option = (name) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
 const harness = harnessNameSchema.parse(option("--harness") ?? "codex");
 async function main() {

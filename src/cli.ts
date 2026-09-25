@@ -17,8 +17,9 @@ import { detectDrivers, getDriver, type BenchmarkHarness } from "./benchmark/age
 import { runBenchmark } from "./benchmark/runner.js";
 import { buildReport, formatReport, saveReport } from "./benchmark/report.js";
 import { benchmarkTasks } from "./benchmark/fixtures.js";
+import { repositoryRoot } from "./repo/root.js";
 
-const [command = "help", ...args] = process.argv.slice(2), cwd = process.cwd();
+const [command = "help", ...args] = process.argv.slice(2), cwd = repositoryRoot(process.cwd());
 const option = (name: string) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
 const harness = harnessNameSchema.parse(option("--harness") ?? "codex");
 

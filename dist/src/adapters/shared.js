@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { eventSchema } from "../core/events.js";
+import { repositoryRoot } from "../repo/root.js";
 export const hookCapabilities = (failure, replacement) => ({
     skills: { supported: true, dynamicLoad: true }, lifecycle: { taskStart: true, toolActivity: true, failure, beforeStop: true },
     tools: { shell: true, mcp: false, browser: false }, delegation: { supported: false, callback: false, modelSelection: false },
@@ -50,7 +51,7 @@ export function translateNativeEvent(input, nativeEvents, explicitName) {
     const name = explicitName ?? String(value.hook_event_name ?? process.env.CURSOR_HOOK_EVENT ?? "");
     if (!nativeEvents.includes(name))
         throw new Error(`Unsupported native hook event: ${name || "<missing>"}`);
-    const base = { version: 1, taskId: taskId(value, name), repository: typeof value.cwd === "string" ? value.cwd : process.cwd(), timestamp: new Date().toISOString() };
+    const base = { version: 1, taskId: taskId(value, name), repository: repositoryRoot(typeof value.cwd === "string" ? value.cwd : process.cwd()), timestamp: new Date().toISOString() };
     if (["UserPromptSubmit", "beforeSubmitPrompt", "sessionStart", "session.created"].includes(name))
         return eventSchema.parse({ ...base, type: "task_start", intent: typeof value.prompt === "string" ? value.prompt : "Coding session" });
     if (["PostToolUse", "postToolUse", "PostToolUseFailure", "postToolUseFailure", "tool.execute.after", "tool.execute.error"].includes(name)) {

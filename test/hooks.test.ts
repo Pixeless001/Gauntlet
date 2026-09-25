@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchHook, harnessForEvent } from "../src/hooks/dispatch.js";
+import { run } from "../src/repo/process.js";
 
 test("portable plugin hooks select compatible native event schemas", () => {
   assert.equal(harnessForEvent("UserPromptSubmit"), "claude-code"); assert.equal(harnessForEvent("PostToolUseFailure"), "claude-code"); assert.equal(harnessForEvent("sessionStart"), "cursor");
@@ -97,6 +99,19 @@ test("Gauntlet permits at most one correction without trusting native counters",
     assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd })).decision, "block");
     const second = await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "correction", cwd }); assert.deepEqual(second, {});
   } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("hooks fired from a subdirectory keep state and baseline at the repository root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "gauntlet-subdir-hook-")), sub = join(root, "src", "nested"), git = (...args: string[]) => run("git", args, root);
+  try {
+    await git("init"); await git("config", "user.email", "test@example.com"); await git("config", "user.name", "Test"); await mkdir(sub, { recursive: true });
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(root, "package-lock.json"), "{}"); await writeFile(join(root, "notes.txt"), "a\n");
+    await git("add", "."); await git("commit", "-m", "base"); await writeFile(join(root, "notes.txt"), "a\nb\n");
+    await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", session_id: "sub", cwd: sub, prompt: "What does this repo do" });
+    assert.equal(existsSync(join(sub, ".gauntlet")), false); assert.equal(existsSync(join(root, ".gauntlet", "tasks")), true);
+    assert.equal((await dispatchHook("claude-code", { hook_event_name: "Stop", session_id: "sub", cwd: sub })).decision, undefined);
+    assert.equal(JSON.parse(await readFile(join(root, ".gauntlet/last-result.json"), "utf8")).files, 0);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("a turn with no file changes is not gated on completion", async () => {

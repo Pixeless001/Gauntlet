@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { relative } from "node:path";
 import { eventSchema, type GauntletEvent } from "../core/events.js";
+import { repositoryRoot } from "../repo/root.js";
 import type { HarnessCapabilities } from "./types.js";
 
 export const hookCapabilities = (failure: boolean, replacement: HarnessCapabilities["output"]["replacement"]): HarnessCapabilities => ({
@@ -55,7 +56,7 @@ export function translateNativeEvent(input: unknown, nativeEvents: string[], exp
   const value = input && typeof input === "object" ? input as NativeEvent : {};
   const name = explicitName ?? String(value.hook_event_name ?? process.env.CURSOR_HOOK_EVENT ?? "");
   if (!nativeEvents.includes(name)) throw new Error(`Unsupported native hook event: ${name || "<missing>"}`);
-  const base = { version: 1 as const, taskId: taskId(value, name), repository: typeof value.cwd === "string" ? value.cwd : process.cwd(), timestamp: new Date().toISOString() };
+  const base = { version: 1 as const, taskId: taskId(value, name), repository: repositoryRoot(typeof value.cwd === "string" ? value.cwd : process.cwd()), timestamp: new Date().toISOString() };
   if (["UserPromptSubmit", "beforeSubmitPrompt", "sessionStart", "session.created"].includes(name)) return eventSchema.parse({ ...base, type: "task_start", intent: typeof value.prompt === "string" ? value.prompt : "Coding session" });
   if (["PostToolUse", "postToolUse", "PostToolUseFailure", "postToolUseFailure", "tool.execute.after", "tool.execute.error"].includes(name)) {
     const failed = failedActivity(value, name);
