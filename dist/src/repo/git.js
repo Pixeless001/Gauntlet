@@ -31,7 +31,7 @@ export async function changedFiles(cwd, baseline) {
                 else
                     deltas.delete(path);
             }
-            else if (!deltas.has(path))
+            else if (!deltas.has(path) && (current[path] || !baseline.status.includes(path)))
                 deltas.set(path, lineDelta(path, [], current[path]?.lineHashes ?? []));
         }
         return [...deltas.values()].sort((a, b) => a.path.localeCompare(b.path));
