@@ -37,12 +37,14 @@ function lifecycleOutput(harness: HarnessName, continuation: unknown): NativeEve
   return harness === "cursor" ? { additional_context: context } : { hookSpecificOutput: { hookEventName: "PreCompact", additionalContext: context } };
 }
 
-async function activityOutput(harness: HarnessName, name: string, repository: string, state: Awaited<ReturnType<GauntletEngine["activity"]>>): Promise<NativeEvent> {
+async function activityOutput(harness: HarnessName, name: string, repository: string, state: Awaited<ReturnType<GauntletEngine["activity"]>>, response: unknown): Promise<NativeEvent> {
   const latest = state.state.activities.at(-1), notice = state.notices.length ? `Repository conventions not followed (fix, or explain why not, before continuing):\n- ${state.notices.join("\n- ")}` : "";
   const context = [state.continuation ? JSON.stringify(state.continuation) : "", notice].filter(Boolean).join("\n\n") || undefined;
   if (!latest?.artifactRef) return context ? harness === "cursor" ? { additional_context: context } : { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } } : {};
   const store = new ArtifactStore(repository), metadata = await store.metadata(latest.artifactRef), conditioned = await store.read(latest.artifactRef, { detail: "concise" });
-  if (harness === "claude-code") return { hookSpecificOutput: { hookEventName: name, updatedToolOutput: conditioned, ...(context ? { additionalContext: context } : {}) } };
+  // Claude Code rejects updatedToolOutput that doesn't match the tool's output shape, so rewrite only stdout in place.
+  const shell = response && typeof response === "object" && typeof (response as { stdout?: unknown }).stdout === "string" ? response : undefined;
+  if (harness === "claude-code") return shell ? { hookSpecificOutput: { hookEventName: name, updatedToolOutput: { ...shell, stdout: conditioned }, ...(context ? { additionalContext: context } : {}) } } : context ? { hookSpecificOutput: { hookEventName: name, additionalContext: context } } : {};
   if (harness === "cursor" && /mcp/i.test(metadata.operation)) return { updated_mcp_tool_output: conditioned, ...(context ? { additional_context: context } : {}) };
   return context || harness === "codex" ? { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: [conditioned, context].filter(Boolean).join("\n\n") } } : {};
 }
@@ -56,7 +58,7 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   if (event.type === "task_activity") {
     if (!await existsTask(engine, id)) return {};
     const activity = await engine.activity(id, event.activity);
-    return activityOutput(harness, name, event.repository, activity);
+    return activityOutput(harness, name, event.repository, activity, input.tool_response);
   }
   if (event.type === "lifecycle") {
     if (!await existsTask(engine, id)) return {};

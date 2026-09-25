@@ -45,7 +45,8 @@ test("host adapters condition results only through declared replacement paths", 
   try {
     await dispatchHook("claude-code", { ...identity, prompt: "Change task.ts" }, "UserPromptSubmit");
     const general = await dispatchHook("claude-code", { ...identity, tool_name: "Shell", tool_input: { command: "npm test" }, tool_response: { stdout: "noise\nFAIL case\nExpected one received two", exit_code: 1 } }, "PostToolUse");
-    assert.match(String((general.hookSpecificOutput as Record<string, unknown>).updatedToolOutput), /FAIL case/);
+    const replaced = (general.hookSpecificOutput as { updatedToolOutput: { stdout: string; exit_code: number } }).updatedToolOutput;
+    assert.match(replaced.stdout, /FAIL case/); assert.equal(replaced.exit_code, 1);
     const mcp = await dispatchHook("cursor", { ...identity, tool_name: "mcp__browser", tool_response: { result: "button Save" } }, "postToolUse");
     assert.match(String(mcp.updated_mcp_tool_output), /button Save/);
     const feedback = await dispatchHook("codex", { ...identity, tool_name: "Shell", tool_response: { stdout: "done", exit_code: 0 } }, "PostToolUse");
