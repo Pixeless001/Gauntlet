@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseTaskState, type TaskState } from "../core/task-state.js";
 import type { TaskMeasurement } from "../core/measure.js";
@@ -79,7 +79,7 @@ export class StateStore {
     try { return await run(); }
     finally { await rm(lock, { recursive: true, force: true }); }
   }
-  async saveMeasurement(value: TaskMeasurement) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); }
+  async saveMeasurement(value: TaskMeasurement) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); await appendFile(join(this.directory, "history.jsonl"), `${JSON.stringify(value)}\n`, { mode: 0o600 }); }
   async loadMeasurement(): Promise<TaskMeasurement | null> {
     const path = join(this.directory, "last-result.json");
     try { const raw = JSON.parse(await readFile(path, "utf8")), migrated = migrateLegacyKeys(raw) as TaskMeasurement; if (!migrated || typeof migrated !== "object" || typeof migrated.taskId !== "string") return null; if (JSON.stringify(raw) !== JSON.stringify(migrated)) await this.atomicWrite(path, migrated); return migrated; } catch { return null; }
