@@ -37,7 +37,8 @@ function lifecycleOutput(harness, continuation) {
     return harness === "cursor" ? { additional_context: context } : { hookSpecificOutput: { hookEventName: "PreCompact", additionalContext: context } };
 }
 async function activityOutput(harness, name, repository, state) {
-    const latest = state.state.activities.at(-1), context = state.continuation ? JSON.stringify(state.continuation) : undefined;
+    const latest = state.state.activities.at(-1), notice = state.notices.length ? `Repository conventions not followed (fix, or explain why not, before continuing):\n- ${state.notices.join("\n- ")}` : "";
+    const context = [state.continuation ? JSON.stringify(state.continuation) : "", notice].filter(Boolean).join("\n\n") || undefined;
     if (!latest?.artifactRef)
         return context ? harness === "cursor" ? { additional_context: context } : { hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: context } } : {};
     const store = new ArtifactStore(repository), metadata = await store.metadata(latest.artifactRef), conditioned = await store.read(latest.artifactRef, { detail: "concise" });

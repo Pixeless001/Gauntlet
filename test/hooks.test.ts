@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, unlink, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchHook, harnessForEvent } from "../src/hooks/dispatch.js";
+import { GauntletEngine } from "../src/core/engine.js";
 import { run } from "../src/repo/process.js";
 
 test("portable plugin hooks select compatible native event schemas", () => {
@@ -140,6 +141,32 @@ test("an allowed Claude Code stop still surfaces convention warnings without blo
     await git("commit", "--allow-empty", "-m", "chore: note", "-m", "Co-Authored-By: Someone <a@b.c>");
     const output = await dispatchHook("claude-code", { hook_event_name: "Stop", ...identity });
     assert.equal(output.decision, undefined); assert.match(String(output.systemMessage), /Co-Authored-By/);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("a commit that breaks a repository instruction is reported to the model in the same turn, once", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-inturn-hook-")), git = (...args: string[]) => run("git", args, cwd);
+  try {
+    await git("init"); await git("config", "user.email", "test@example.com"); await git("config", "user.name", "Test");
+    await writeFile(join(cwd, "AGENTS.md"), "Never add `Co-Authored-By` to commits.\n"); await git("add", "."); await git("commit", "-m", "base");
+    const identity = { session_id: "inturn", cwd }, commit = { hook_event_name: "PostToolUse", ...identity, tool_name: "Bash", tool_input: { command: "git commit --allow-empty -m note" }, tool_response: { stdout: "ok" } };
+    await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", ...identity, prompt: "Commit a note" });
+    const context = (output: Record<string, unknown>) => String((output.hookSpecificOutput as Record<string, unknown> | undefined)?.additionalContext ?? "");
+    assert.equal(context(await dispatchHook("claude-code", commit)), "");
+    await git("commit", "--allow-empty", "-m", "chore: note", "-m", "Co-Authored-By: Someone <a@b.c>");
+    assert.match(context(await dispatchHook("claude-code", commit)), /Co-Authored-By/); assert.equal(context(await dispatchHook("claude-code", commit)), "");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("a written test file that breaks the colocated-test convention is reported in the same turn", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-drift-hook-"));
+  try {
+    for (const name of ["a", "b", "c"]) await writeFile(join(cwd, `${name}.test.ts`), "export {};\n");
+    const engine = new GauntletEngine(cwd); await engine.start("Add a test for the parser", "drift");
+    await mkdir(join(cwd, "tests"), { recursive: true }); await writeFile(join(cwd, "tests", "parser.test.ts"), "export {};\n");
+    const result = await engine.activity("drift", { kind: "file_write", target: "tests/parser.test.ts", outcome: "pass", outputBytes: 0 });
+    assert.ok(result.notices.some((notice) => /colocated/.test(notice)));
+    assert.deepEqual((await engine.activity("drift", { kind: "file_write", target: "tests/parser.test.ts", outcome: "pass", outputBytes: 0 })).notices, []);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 

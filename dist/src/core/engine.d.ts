@@ -20,6 +20,7 @@ export interface ActivityResult {
     state: TaskState;
     continuation: ContinuationRecord | null;
     directive: RuntimeDirective;
+    notices: string[];
 }
 export interface LifecycleResult {
     state: TaskState;

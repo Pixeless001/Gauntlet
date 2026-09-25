@@ -150,6 +150,7 @@ export interface TaskState {
     findings: Finding[];
     attempts: number;
     finishedAt?: string;
+    noticed?: string[];
     control: ControlState;
     world: CurrentValidWorld;
 }
@@ -255,6 +256,7 @@ export declare const taskStateSchema: z.ZodObject<{
     }, z.core.$strip>>;
     attempts: z.ZodNumber;
     finishedAt: z.ZodOptional<z.ZodString>;
+    noticed: z.ZodOptional<z.ZodArray<z.ZodString>>;
     control: z.ZodObject<{
         uncertainty: z.ZodObject<{
             api: z.ZodTypeAny<unknown, unknown, z.core.$ZodTypeInternals<unknown, unknown>>;

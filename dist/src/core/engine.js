@@ -141,16 +141,21 @@ export class GauntletEngine {
             activity = { ...bounded, artifactRef: artifact.artifactRef };
         }
         const fingerprint = (activity.kind === "file_read" || activity.kind === "file_write") && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/") ? (await fingerprintFiles(this.cwd, [activity.target]))[activity.target] : undefined;
-        let writtenImpact = null, immediateFindings = [];
+        let writtenImpact = null, immediateFindings = [], advisories = [];
         if (activity.kind === "file_write" && activity.target && !activity.target.startsWith("../") && !activity.target.startsWith("/")) {
             const repository = await createRepoIndex(this.cwd), cached = await loadStructuralIndex(this.cwd, repository.head);
             const structural = cached ? await updateStructuralIndex(this.cwd, repository, cached, [activity.target], 160) : await buildStructuralIndex(this.cwd, repository, [activity.target], 160);
             await saveStructuralIndex(this.cwd, structural);
             writtenImpact = inspectImpact(structural, activity.target);
             const changes = await changedFiles(this.cwd, currentState.baseline), profile = await detectRepository(this.cwd), scope = assessScope(currentState.contract, changes, currentState.baseline.dependencies, profile.dependencies ?? [], structural, currentState.baseline.publicExports);
-            immediateFindings = [...await inspectTestIntegrity(this.cwd, currentState.baseline.tests, changes), ...await inspectConventionDrift(this.cwd, currentState, changes)].filter((item) => item.blocking);
+            const found = [...await inspectTestIntegrity(this.cwd, currentState.baseline.tests, changes), ...await inspectConventionDrift(this.cwd, currentState, changes)];
+            immediateFindings = found.filter((item) => item.blocking);
+            advisories = found.filter((item) => !item.blocking && item.code.startsWith("convention-"));
             immediateFindings.push(...scope.hardSignals.map((message) => ({ code: "scope-hard-signal", severity: "error", blocking: true, message, proof: scope.actual })));
         }
+        if (activity.kind === "command" && activity.target && /\bgit\b[^|;&]*\bcommit\b/.test(activity.target))
+            advisories.push(...await inspectCommitRules(this.cwd, currentState.baseline.head));
+        advisories = advisories.filter((finding) => !(currentState.noticed ?? []).includes(noticeKey(finding)));
         let workflowChanged = false, directive = { action: "continue", reason: "No control action is required" };
         const state = await this.store.updateTaskWithWorldEvent(id, (value) => {
             value.activities.push(activity);
@@ -158,14 +163,10 @@ export class GauntletEngine {
                 value.control.context.artifactRefs = [...value.control.context.artifactRefs, activity.artifactRef].slice(-200);
             if (activity.kind === "message")
                 value.control.context.recentCompletedTurns = [...value.control.context.recentCompletedTurns, value.activities.length - 1].slice(-3);
-            if (value.activities.length > 1_000) {
-                const removed = value.activities.length - 1_000;
-                value.activities.splice(0, removed);
-                value.control.lastCompactedActivity = Math.max(0, value.control.lastCompactedActivity - removed);
-                value.control.context.recentCompletedTurns = value.control.context.recentCompletedTurns.map((index) => index - removed).filter((index) => index >= 0).slice(-3);
-            }
             const loop = loopFinding(value);
             value.findings = deduplicateFindings([...value.findings, ...immediateFindings]);
+            if (advisories.length)
+                value.noticed = [...(value.noticed ?? []), ...advisories.map(noticeKey)].slice(-50);
             if (loop && !value.findings.some((finding) => finding.code === loop.code))
                 value.findings.push(loop);
             if (value.control && activity.kind === "file_read" && activity.target && fingerprint) {
@@ -252,7 +253,7 @@ export class GauntletEngine {
                 value.control.lastCompactedActivity = value.activities.length;
                 value.control.compactions += 1;
             } });
-        return { state, continuation, directive };
+        return { state, continuation, directive, notices: advisories.map((finding) => finding.message) };
     }
     async lifecycle(id, phase) {
         const state = await this.store.updateTask(id, (value) => {
@@ -503,6 +504,7 @@ async function injection(context, skills) {
     } }));
     return [STEERING_POLICY, formatContext(context), ...loaded.filter(Boolean)].join("\n\n");
 }
+const noticeKey = (finding) => `${finding.code}:${finding.proof.join(":")}`;
 function deduplicateFindings(findings) {
     const seen = new Set();
     return findings.filter((finding) => { const key = `${finding.code}:${finding.proof.join(":")}`; if (seen.has(key))
