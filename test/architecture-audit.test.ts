@@ -8,7 +8,7 @@ import { ARCHITECTURE_AUDIT, summarizeArchitectureAudit, validateAuditProof, typ
 test("architecture audit exposes incomplete mandatory architecture", async () => {
   const summary = summarizeArchitectureAudit(), issues = await validateAuditProof(process.cwd());
   assert.equal(new Set(ARCHITECTURE_AUDIT.map((item) => item.id)).size, ARCHITECTURE_AUDIT.length);
-  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, true); assert.deepEqual(summary.blocking, []); assert.equal(summary.blocking.includes("metrics"), false); assert.equal(summary.blocking.includes("sparse-context"), false); assert.equal(summary.blocking.includes("adapters"), false); assert.equal(summary.blocking.includes("evaluation"), false); assert.equal(summary.blocking.includes("candidates"), false); assert.equal(summary.blocking.includes("event-sourcing"), false); assert.deepEqual(issues, []);
+  assert.ok(summary.total >= 20); assert.equal(summary.mandatory, summary.total); assert.equal(summary.releaseReady, true); assert.deepEqual(summary.blocking, []); assert.deepEqual(issues, []);
   assert.ok(ARCHITECTURE_AUDIT.every((item) => item.acceptance && item.implementation.length && item.tests.length));
 });
 
