@@ -1,6 +1,6 @@
 {
   "name": "gauntlet-agent",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A lightweight control layer for clean, verified coding-agent workflows",
   "type": "module",
   "main": "dist/src/cli.js",
