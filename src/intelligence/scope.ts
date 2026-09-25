@@ -26,8 +26,9 @@ export function assessScope(contract: TaskContract, changes: FileDelta[], before
     if (bounded && target?.publicSurface && !expected.includes(change.path)) hardSignals.push(`unexpected public surface: ${change.path}`);
     if (bounded && target?.packageCrossings.length && !expected.includes(change.path)) hardSignals.push(`unexpected package crossing: ${change.path}`);
     if (bounded && /(?:^|\/)(?:migrations?|schema|auth|security|permissions?)(?:\/|\.|$)/i.test(change.path) && !contract.explicitPaths.includes(change.path)) hardSignals.push(`unexpected boundary change: ${change.path}`);
-    if (change.added + change.removed > 250 && !hardSignals.some((item) => item.endsWith(change.path))) softSignals.push(`large local change: ${change.path}`);
+    if (change.added > 250 &&!hardSignals.some((item) => item.endsWith(change.path))) softSignals.push(`large local change: ${change.path}`);
   }
-  if (changes.length > 8 && !hardSignals.length) softSignals.push(`broad local footprint: ${changes.length} files`);
+  const grown = changes.filter((change) => change.added > 0);
+  if (grown.length > 8 && !hardSignals.length) softSignals.push(`broad local footprint: ${grown.length} files`);
   return { expected, actual, unexpected, hardSignals: [...new Set(hardSignals)], softSignals: [...new Set(softSignals)] };
 }

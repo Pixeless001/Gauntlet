@@ -1,9 +1,9 @@
 import { detectDependencies } from "../repo/detect.js";
 export async function evaluateGuards(cwd, state, changes) {
     const findings = [];
-    const total = changes.reduce((sum, file) => sum + file.added + file.removed, 0);
-    if (changes.length > 8 && total > 300)
-        findings.push({ code: "scope-growth", severity: "warning", blocking: false, message: "The implementation footprint is unusually large; confirm every changed file is task-scoped.", proof: [`${changes.length} files`, `${total} changed lines`] });
+    const grown = changes.filter((file) => file.added > 0), total = grown.reduce((sum, file) => sum + file.added, 0);
+    if (grown.length > 8 && total > 300)
+        findings.push({ code: "scope-growth", severity: "warning", blocking: false, message: "The implementation footprint is unusually large; confirm every changed file is task-scoped.", proof: [`${grown.length} files`, `${total} added lines`] });
     const dependencies = await detectDependencies(cwd);
     const added = dependencies.filter((item) => !state.baseline.dependencies.includes(item));
     if (added.length)

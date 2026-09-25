@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { buildStructuralIndex, updateStructuralIndex } from "../src/intelligence/index.js";
 import { ensureDepth, graphExpansionCandidate, impact, inspectImpact, workingGraph } from "../src/intelligence/working-graph.js";
 import { assessScope } from "../src/intelligence/scope.js";
-import { contract } from "./support.js";
+import { evaluateGuards } from "../src/core/guard.js";
+import { contract, taskState } from "./support.js";
 import { selectMarginal } from "../src/context/marginality.js";
 import type { RepoIndex } from "../src/repo/index.js";
 
@@ -32,6 +33,18 @@ test("scope accepts broad requested work and rejects material unrequested expans
   assert.deepEqual(broad.hardSignals, []);
   const drift = assessScope(contract("Change module implementation", { explicitPaths: ["public.ts"], expectedFrontier: ["public.ts"] }), [{ path: "public.ts", added: 1, removed: 0 }], [], [], index, { "public.ts": [] });
   assert.ok(drift.hardSignals.some((item) => item.startsWith("unrequested public exports")));
+});
+
+test("footprint signals count growth, so a deletion-heavy strip is not flagged", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-footprint-"));
+  try {
+    const files = (count: number, added: number, removed: number) => Array.from({ length: count }, (_, index) => ({ path: `f${index}.ts`, added, removed }));
+    const strip = files(11, 0, 50), growth = files(9, 40, 0);
+    assert.deepEqual(assessScope(contract("Strip unused code"), strip, [], []).softSignals, []);
+    assert.ok(assessScope(contract("Add feature"), growth, [], []).softSignals.some((item) => item.startsWith("broad local footprint: 9")));
+    assert.equal((await evaluateGuards(cwd, taskState("Strip unused code"), strip)).some((item) => item.code === "scope-growth"), false);
+    assert.equal((await evaluateGuards(cwd, taskState("Add feature"), growth)).some((item) => item.code === "scope-growth"), true);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("structural intelligence incrementally replaces changed files and removes deleted files", async () => {
