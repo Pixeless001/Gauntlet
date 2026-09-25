@@ -130,6 +130,19 @@ test("a prompt after an accepted stop starts a fresh task instead of reusing the
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
+test("an allowed Claude Code stop still surfaces convention warnings without blocking", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-advisory-hook-")), git = (...args: string[]) => run("git", args, cwd);
+  try {
+    await git("init"); await git("config", "user.email", "test@example.com"); await git("config", "user.name", "Test");
+    await writeFile(join(cwd, "AGENTS.md"), "Never add `Co-Authored-By` to commits.\n"); await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}");
+    await git("add", "."); await git("commit", "-m", "base");
+    const identity = { session_id: "advisory", cwd }; await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", ...identity, prompt: "What does this repo do" });
+    await git("commit", "--allow-empty", "-m", "chore: note", "-m", "Co-Authored-By: Someone <a@b.c>");
+    const output = await dispatchHook("claude-code", { hook_event_name: "Stop", ...identity });
+    assert.equal(output.decision, undefined); assert.match(String(output.systemMessage), /Co-Authored-By/);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
 test("a turn with no file changes is not gated on completion", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-nochange-hook-"));
   try {

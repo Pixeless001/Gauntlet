@@ -1,18 +1,26 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { run } from "./process.js";
-const forbids = /\b(?:never|do not|don't|must not)\b[^.\n]*\b(?:co-authored-by|signed-off-by|generated with|attribution)\b/i;
-const attribution = /^(?:co-authored-by|signed-off-by|claude-session):|generated with/im;
-/** Flags task commits whose messages carry attribution the repository's own instructions forbid. */
+const negative = /^\s*(?:[-*]\s+|\d+\.\s+)?(?:never|do not|don't|must not)\b/i;
+const quoted = /`([^`\n]{3,60})`|"([^"\n]{3,60})"/g;
+/** Negative instructions about commits that name concrete terms, e.g. "Never add `X` to commits". */
+export function commitRules(source, content) {
+    return content.split("\n").filter((line) => negative.test(line) && /\bcommits?\b/i.test(line)).map((line) => ({ source, text: line.replace(/^\s*(?:[-*]\s+|\d+\.\s+)?/, "").trim(), terms: [...line.matchAll(quoted)].map((match) => (match[1] ?? match[2])) })).filter((rule) => rule.terms.length);
+}
+const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Warns when task commits start a line with a term the repository's own instructions forbid in commits. */
 export async function inspectCommitRules(cwd, head) {
     if (!head)
         return [];
-    const instructions = (await Promise.all(["AGENTS.md", "CLAUDE.md"].map((name) => readFile(join(cwd, name), "utf8").catch(() => "")))).join("\n");
-    if (!forbids.test(instructions))
+    const rules = (await Promise.all(["AGENTS.md", "CLAUDE.md"].map(async (name) => commitRules(name, await readFile(join(cwd, name), "utf8").catch(() => ""))))).flat();
+    if (!rules.length)
         return [];
     const log = await run("git", ["log", "--format=%h%x00%B%x01", `${head}..HEAD`], cwd, 15_000, 8_000_000);
     if (log.exitCode !== 0)
         return [];
-    const offending = log.stdout.split("\x01").map((entry) => entry.trim().split("\0")).filter(([, message = ""]) => attribution.test(message)).map(([sha = ""]) => sha);
-    return offending.length ? [{ code: "commit-attribution", severity: "error", blocking: true, message: "Commit messages carry attribution that repository instructions forbid; rewording them rewrites history, so ask before amending.", proof: offending }] : [];
+    const commits = log.stdout.split("\x01").map((entry) => entry.trim().split("\0")).filter(([sha]) => sha);
+    return rules.flatMap((rule) => {
+        const violated = commits.filter(([, message = ""]) => rule.terms.some((term) => new RegExp(`^\\W*${escape(term)}`, "im").test(message))).map(([sha]) => sha);
+        return violated.length ? [{ code: "convention-instruction", severity: "warning", blocking: false, message: `${rule.source}: "${rule.text.slice(0, 160)}" — not followed in ${violated.join(", ")}`, proof: violated }] : [];
+    });
 }

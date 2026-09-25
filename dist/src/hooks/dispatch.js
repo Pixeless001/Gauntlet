@@ -73,7 +73,8 @@ export async function dispatchHook(harness, input, nativeEvent) {
             await engine.retry(id);
         else
             await engine.close(id);
-        return stopOutput(harness, summary, acceptable, alreadyContinued);
+        const output = stopOutput(harness, summary, acceptable, alreadyContinued), advisory = state.findings.filter((finding) => !finding.blocking && finding.code.startsWith("convention-")).map((finding) => finding.message).slice(0, 3);
+        return harness === "claude-code" && !output.decision && advisory.length ? { ...output, systemMessage: `Gauntlet advisory:\n- ${advisory.join("\n- ")}` } : output;
     }
     return {};
 }

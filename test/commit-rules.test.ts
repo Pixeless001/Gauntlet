@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inspectCommitRules } from "../src/repo/commit-rules.js";
+import { commitRules, inspectCommitRules } from "../src/repo/commit-rules.js";
 import { run } from "../src/repo/process.js";
 
 async function withRepo(instructions: string, body: (cwd: string, head: string, commit: (...message: string[]) => Promise<void>) => Promise<void>) {
@@ -15,25 +15,28 @@ async function withRepo(instructions: string, body: (cwd: string, head: string, 
   } finally { await rm(cwd, { recursive: true, force: true }); }
 }
 
-const forbidding = "Never add `Co-Authored-By`, `Signed-off-by`, \"Generated with\", or any other AI/tool attribution trailer.\n";
+test("negative commit instructions that name terms become checkable rules", () => {
+  const rules = commitRules("AGENTS.md", ["# Git", "Never add `Co-Authored-By` or \"Generated with\" to commits.", "- Do not create empty commits.", "Never touch `secrets.env`.", "Keep commits small."].join("\n"));
+  assert.deepEqual(rules.map((rule) => rule.terms), [["Co-Authored-By", "Generated with"]]);
+});
 
-test("commits with attribution trailers violate a repository rule that forbids them", async () => {
-  await withRepo(forbidding, async (cwd, head, commit) => {
-    await commit("feat: clean");
+test("commits are checked against whatever terms the repository's instructions forbid", async () => {
+  await withRepo("Never add `Co-Authored-By` to commits.\nDo not include `Ticket:` lines in commits.\n", async (cwd, head, commit) => {
+    await commit("feat: clean", "Explains why Co-Authored-By is not used here.");
     assert.deepEqual(await inspectCommitRules(cwd, head), []);
-    await commit("feat: attributed", "Co-Authored-By: Claude <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_x");
-    const [finding] = await inspectCommitRules(cwd, head);
-    assert.equal(finding?.code, "commit-attribution"); assert.equal(finding?.blocking, true); assert.equal(finding?.proof.length, 1);
+    await commit("feat: trailer", "Co-Authored-By: Someone <a@b.c>"); await commit("feat: ticket", "Ticket: 42");
+    const findings = await inspectCommitRules(cwd, head);
+    assert.equal(findings.length, 2); assert.ok(findings.every((finding) => finding.code === "convention-instruction" && finding.blocking === false && finding.proof.length === 1));
   });
 });
 
-test("attribution is not flagged without a rule forbidding it, or without a baseline commit", async () => {
+test("nothing is flagged without a matching rule or a baseline commit", async () => {
   await withRepo("Keep commits small.\n", async (cwd, head, commit) => {
-    await commit("feat: attributed", "Co-Authored-By: Claude <noreply@anthropic.com>");
+    await commit("feat: trailer", "Co-Authored-By: Someone <a@b.c>");
     assert.deepEqual(await inspectCommitRules(cwd, head), []);
   });
-  await withRepo(forbidding, async (cwd, _head, commit) => {
-    await commit("feat: attributed", "Signed-off-by: Someone <a@b.c>");
+  await withRepo("Never add `Co-Authored-By` to commits.\n", async (cwd, _head, commit) => {
+    await commit("feat: trailer", "Co-Authored-By: Someone <a@b.c>");
     assert.deepEqual(await inspectCommitRules(cwd, null), []);
   });
 });

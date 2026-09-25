@@ -66,7 +66,8 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
     const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.completion === "complete" || result.files === 0;
     const alreadyContinued = result.attempts > 1;
     if (!acceptable && !alreadyContinued) await engine.retry(id); else await engine.close(id);
-    return stopOutput(harness, summary, acceptable, alreadyContinued);
+    const output = stopOutput(harness, summary, acceptable, alreadyContinued), advisory = state.findings.filter((finding) => !finding.blocking && finding.code.startsWith("convention-")).map((finding) => finding.message).slice(0, 3);
+    return harness === "claude-code" && !output.decision && advisory.length ? { ...output, systemMessage: `Gauntlet advisory:\n- ${advisory.join("\n- ")}` } : output;
   }
   return {};
 }
