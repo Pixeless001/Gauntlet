@@ -129,10 +129,9 @@ export class StateStore {
                 if (!["EEXIST", "EPERM", "EACCES"].includes(error.code ?? "") || attempt >= 250)
                     throw error;
                 try {
-                    if (Date.now() - (await stat(lock)).mtimeMs > 30_000 && !await liveOwner(lock))
-                        await rm(lock, { recursive: true, force: true });
+                    await reclaimDead(lock);
                 }
-                catch { /* another writer released it */ }
+                catch { /* another writer released or reclaimed it */ }
                 await new Promise((resolve) => setTimeout(resolve, 20));
             }
         }
@@ -198,15 +197,28 @@ async function importStoredReferences(repository, taskId, value) {
     };
     return visit(value);
 }
-async function liveOwner(lock) {
+function ownerAlive(owner) {
+    const pid = Number(owner.split("\n")[0]);
+    if (!Number.isSafeInteger(pid) || pid <= 0)
+        return false;
     try {
-        const pid = Number((await readFile(join(lock, "owner"), "utf8")).split("\n")[0]);
-        if (!Number.isSafeInteger(pid) || pid <= 0)
-            return false;
         process.kill(pid, 0);
         return true;
     }
     catch (error) {
         return error.code === "EPERM";
     }
+}
+/** A hook killed at its timeout leaves its lock behind; reclaim it as soon as its owner is dead. The rename makes one reclaimer win and lets it detect it grabbed a lock re-created in the meantime. */
+async function reclaimDead(lock) {
+    const owner = await readFile(join(lock, "owner"), "utf8").catch(() => null);
+    // No owner file yet means the holder is between mkdir and its owner write; give it 2s.
+    if (owner === null ? Date.now() - (await stat(lock)).mtimeMs <= 2_000 : ownerAlive(owner))
+        return;
+    const grave = `${lock}.${randomUUID()}.dead`;
+    await rename(lock, grave);
+    if (await readFile(join(grave, "owner"), "utf8").catch(() => null) === owner)
+        await rm(grave, { recursive: true, force: true });
+    else
+        await rename(grave, lock).catch(() => rm(grave, { recursive: true, force: true }));
 }

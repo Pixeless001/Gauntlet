@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { adapter } from "../adapters/install.js";
 import { GauntletEngine } from "../core/engine.js";
 import { formatSummary } from "../reporting/summary.js";
@@ -74,14 +75,29 @@ export async function dispatchHook(harness, input, nativeEvent) {
             await engine.retry(id);
         else
             await engine.close(id);
-        const output = stopOutput(harness, summary, acceptable, alreadyContinued), advisory = state.findings.filter((finding) => !finding.blocking && finding.code.startsWith("convention-")).map((finding) => finding.message).slice(0, 3);
-        return harness === "claude-code" && !output.decision && advisory.length ? { ...output, systemMessage: `Gauntlet advisory:\n- ${advisory.join("\n- ")}` } : output;
+        // Only the blocking `reason` reaches the model; a systemMessage would render for the user, and convention notices already reach the model via PostToolUse.
+        return stopOutput(harness, summary, acceptable, alreadyContinued);
     }
     return {};
 }
-export async function runHook(harness, nativeEvent) { process.stdout.write(`${JSON.stringify(await dispatchHook(harness, await stdin(), nativeEvent))}\n`); }
+// A hook fault must never surface as a "hook error" in the host UI: log it and let the turn proceed.
+async function failOpen(cwd, run) {
+    let output = {};
+    try {
+        output = await run();
+    }
+    catch (error) {
+        try {
+            await mkdir(join(cwd, ".gauntlet"), { recursive: true });
+            await appendFile(join(cwd, ".gauntlet", "hook-errors.log"), `${new Date().toISOString()} ${error.stack ?? error}\n`);
+        }
+        catch { /* logging is best effort */ }
+    }
+    process.stdout.write(`${JSON.stringify(output)}\n`);
+}
+export async function runHook(harness, nativeEvent) { const input = await stdin(); await failOpen(String(input.cwd ?? process.cwd()), () => dispatchHook(harness, input, nativeEvent)); }
 export function harnessForEvent(name) { return /^[a-z]/.test(name) ? "cursor" : "claude-code"; }
 export async function runAutoHook(nativeEvent) {
     const input = await stdin(), name = nativeEvent ?? eventName(input);
-    process.stdout.write(`${JSON.stringify(await dispatchHook(harnessForEvent(name), input, name))}\n`);
+    await failOpen(String(input.cwd ?? process.cwd()), () => dispatchHook(harnessForEvent(name), input, name));
 }

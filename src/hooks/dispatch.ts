@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { HarnessName } from "../adapters/types.js";
 import { adapter } from "../adapters/install.js";
 import { GauntletEngine } from "../core/engine.js";
@@ -67,16 +68,25 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
     const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.completion === "complete" || result.files === 0;
     const alreadyContinued = result.attempts > 1;
     if (!acceptable && !alreadyContinued) await engine.retry(id); else await engine.close(id);
-    const output = stopOutput(harness, summary, acceptable, alreadyContinued), advisory = state.findings.filter((finding) => !finding.blocking && finding.code.startsWith("convention-")).map((finding) => finding.message).slice(0, 3);
-    return harness === "claude-code" && !output.decision && advisory.length ? { ...output, systemMessage: `Gauntlet advisory:\n- ${advisory.join("\n- ")}` } : output;
+    // Only the blocking `reason` reaches the model; a systemMessage would render for the user, and convention notices already reach the model via PostToolUse.
+    return stopOutput(harness, summary, acceptable, alreadyContinued);
   }
   return {};
 }
 
-export async function runHook(harness: HarnessName, nativeEvent?: string): Promise<void> { process.stdout.write(`${JSON.stringify(await dispatchHook(harness, await stdin(), nativeEvent))}\n`); }
+// A hook fault must never surface as a "hook error" in the host UI: log it and let the turn proceed.
+async function failOpen(cwd: string, run: () => Promise<NativeEvent>): Promise<void> {
+  let output: NativeEvent = {};
+  try { output = await run(); } catch (error) {
+    try { await mkdir(join(cwd, ".gauntlet"), { recursive: true }); await appendFile(join(cwd, ".gauntlet", "hook-errors.log"), `${new Date().toISOString()} ${(error as Error).stack ?? error}\n`); } catch { /* logging is best effort */ }
+  }
+  process.stdout.write(`${JSON.stringify(output)}\n`);
+}
+
+export async function runHook(harness: HarnessName, nativeEvent?: string): Promise<void> { const input = await stdin(); await failOpen(String(input.cwd ?? process.cwd()), () => dispatchHook(harness, input, nativeEvent)); }
 
 export function harnessForEvent(name: string): HarnessName { return /^[a-z]/.test(name) ? "cursor" : "claude-code"; }
 export async function runAutoHook(nativeEvent?: string): Promise<void> {
   const input = await stdin(), name = nativeEvent ?? eventName(input);
-  process.stdout.write(`${JSON.stringify(await dispatchHook(harnessForEvent(name), input, name))}\n`);
+  await failOpen(String(input.cwd ?? process.cwd()), () => dispatchHook(harnessForEvent(name), input, name));
 }

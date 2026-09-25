@@ -131,7 +131,7 @@ test("a prompt after an accepted stop starts a fresh task instead of reusing the
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
-test("an allowed Claude Code stop still surfaces convention warnings without blocking", async () => {
+test("an allowed Claude Code stop shows the user nothing and does not block", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "gauntlet-advisory-hook-")), git = (...args: string[]) => run("git", args, cwd);
   try {
     await git("init"); await git("config", "user.email", "test@example.com"); await git("config", "user.name", "Test");
@@ -140,7 +140,19 @@ test("an allowed Claude Code stop still surfaces convention warnings without blo
     const identity = { session_id: "advisory", cwd }; await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", ...identity, prompt: "What does this repo do" });
     await git("commit", "--allow-empty", "-m", "chore: note", "-m", "Co-Authored-By: Someone <a@b.c>");
     const output = await dispatchHook("claude-code", { hook_event_name: "Stop", ...identity });
-    assert.equal(output.decision, undefined); assert.match(String(output.systemMessage), /Co-Authored-By/);
+    assert.equal(output.decision, undefined); assert.equal(output.systemMessage, undefined);
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("a lock orphaned by a killed hook is reclaimed immediately instead of failing the next hook", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-orphan-lock-"));
+  try {
+    await writeFile(join(cwd, "package.json"), "{}");
+    const identity = { session_id: "orphan", cwd }; await dispatchHook("claude-code", { hook_event_name: "UserPromptSubmit", ...identity, prompt: "What does this repo do" });
+    const task = (await readdir(join(cwd, ".gauntlet", "tasks"))).find((name) => /^native-[0-9a-f]+\.json$/.test(name))!, lock = join(cwd, ".gauntlet", "tasks", `${task}.lock`);
+    await mkdir(lock); await writeFile(join(lock, "owner"), `2147483646\n${Date.now()}\n`);
+    const started = Date.now(); await dispatchHook("claude-code", { hook_event_name: "Stop", ...identity });
+    assert.ok(Date.now() - started < 4_000); assert.equal(existsSync(lock), false);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
