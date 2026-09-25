@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseTaskState } from "../core/task-state.js";
 import { MAX_STATE_BYTES } from "../core/policy.js";
@@ -121,7 +121,7 @@ export class StateStore {
             await rm(lock, { recursive: true, force: true });
         }
     }
-    async saveMeasurement(value) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); }
+    async saveMeasurement(value) { await mkdir(this.directory, { recursive: true, mode: 0o700 }); await this.atomicWrite(join(this.directory, "last-result.json"), value); await appendFile(join(this.directory, "history.jsonl"), `${JSON.stringify(value)}\n`, { mode: 0o600 }); }
     async loadMeasurement() {
         const path = join(this.directory, "last-result.json");
         try {

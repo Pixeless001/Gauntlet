@@ -30,7 +30,7 @@ function startOutput(harness, name, id, injection, clarification) {
 function stopOutput(harness, summary, acceptable, alreadyContinued) {
     if (!acceptable && !alreadyContinued)
         return harness === "cursor" ? { followup_message: `Gauntlet completion is not clean and verified. Address the findings or failing check, then finish again.\n\n${summary}` } : { decision: "block", reason: `Gauntlet completion is not clean and verified. Address the findings or failing check, then finish again.\n\n${summary}` };
-    return harness === "cursor" ? {} : { systemMessage: summary };
+    return {};
 }
 function lifecycleOutput(harness, continuation) {
     const context = JSON.stringify(continuation);

@@ -6,6 +6,7 @@ import { harnessNameSchema } from "./adapters/types.js";
 import { adapter } from "./adapters/install.js";
 import { GauntletEngine } from "./core/engine.js";
 import { formatSummary } from "./reporting/summary.js";
+import { formatStats, latestBenchmark, loadHistory } from "./reporting/stats.js";
 import { activitySchema } from "./core/events.js";
 import { runAutoHook, runHook } from "./hooks/dispatch.js";
 import { evalSuites, runEvalSuite, saveEvalRun } from "./measure/eval-runner.js";
@@ -83,6 +84,8 @@ async function main() {
             throw new Error("Usage: gauntlet finish <task-id>");
         console.log(formatSummary(await new GauntletEngine(cwd).finish(id)));
     }
+    else if (command === "stats")
+        console.log(formatStats(await loadHistory(cwd), await latestBenchmark(cwd)));
     else if (command === "hook") {
         if (args[0] === "auto")
             await runAutoHook(args[1]);
@@ -116,6 +119,6 @@ async function main() {
         }
     }
     else
-        console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite ${evalSuites.join("|")}]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>\n  benchmark --harness <codex|claude-code|opencode> --model <id> [--endpoint url] [--api-key-env VAR] [--task id] [--repeats N]\n  benchmark --list-drivers | --list-models --harness <h> [--endpoint url] [--api-key-env VAR]`);
+        console.log(`Gauntlet\n\nCommands:\n  init|install [--harness codex|claude-code|cursor|opencode] [--dry-run]\n  uninstall [--harness ...] [--dry-run]\n  doctor\n  eval [--suite ${evalSuites.join("|")}]\n  evolve [--dry-run]\n  audit [--strict]\n  artifact <task-id> <handle> [--detail ...] [--lines start:end]\n  start <intent>\n  activity <task-id> '<json>'\n  finish <task-id>\n  stats\n  benchmark --harness <codex|claude-code|opencode> --model <id> [--endpoint url] [--api-key-env VAR] [--task id] [--repeats N]\n  benchmark --list-drivers | --list-models --harness <h> [--endpoint url] [--api-key-env VAR]`);
 }
 main().catch((error) => { console.error(pc.red(error instanceof Error ? error.message : String(error))); process.exitCode = 1; });
