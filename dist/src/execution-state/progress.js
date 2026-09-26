@@ -1,4 +1,18 @@
 import { rejectedOverlap } from "./checkpoints.js";
+const isProof = (event) => Boolean(event.proofRef) || event.type === "test_result" && event.outcome === "pass" || event.type === "decision_signal" && event.outcome === "pass";
+// Agent scratch (plans, memory) is iterated on by design, and a passing check between edits means the rewrites are converging; neither is a stall.
+const isScratch = (target) => /(?:^|[\/])\.claude[\/]/.test(target);
+export function rewritesWithoutProof(events, target) {
+    if (isScratch(target))
+        return 0;
+    let from = 0;
+    for (let index = events.length - 1; index >= 0; index--)
+        if (isProof(events[index])) {
+            from = index + 1;
+            break;
+        }
+    return events.slice(from).filter((event) => event.type === "file_write" && event.target === target).length;
+}
 /** Classify observable task movement without treating code volume or tool count as progress. */
 export function assessProgress(input) {
     const unresolved = Object.entries(input.uncertainty).filter(([, state]) => state === "open" || state === "partial").map(([kind]) => kind);
@@ -13,7 +27,7 @@ export function assessProgress(input) {
             return { status: "REGRESSED", reason: `Activity overlaps rejected direction ${overlap.id}`, ...common, rejectedOverlap: true };
     }
     const sameFailures = recent?.type === "failure" && recent.target ? input.events.filter((event) => event.type === "failure" && event.target === recent.target).length : 0;
-    const sameWrites = recent?.type === "file_write" && recent.target ? input.events.filter((event) => event.type === "file_write" && event.target === recent.target).length : 0;
+    const sameWrites = recent?.type === "file_write" && recent.target ? rewritesWithoutProof(input.events, recent.target) : 0;
     if (!proofGained && (sameFailures >= 2 || sameWrites >= 3))
         return { status: "STALLED", reason: sameFailures >= 2 ? "Repeated failure did not add proof" : "Repeated rewrite did not resolve uncertainty", ...common, rejectedOverlap: false };
     return { status: "PROGRESS", reason: proofGained || common.uncertaintyDelta > 0 ? "New task support was recorded" : "No stalled or regressed state observed", ...common, rejectedOverlap: false };

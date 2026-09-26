@@ -5,7 +5,7 @@ import { activePath, rejectBranch } from "./checkpoints.js";
 import type { ExecutionCheckpoint } from "./checkpoints.js";
 import type { ExecutionEvent, ExecutionEventType } from "./events.js";
 import { hasSufficientProof, type ProofKind } from "../verify/proof-selector.js";
-import { assessProgress, type ProgressStatus } from "./progress.js";
+import { assessProgress, rewritesWithoutProof, type ProgressStatus } from "./progress.js";
 
 export function observeExecution(state: TaskState, activity: TaskActivity): { investigate: boolean; trigger?: "repeated_failure" | "repeated_rewrite" | "regressed"; causeValidated: boolean; progress?: ProgressStatus } {
   const execution = state.control?.execution;
@@ -16,7 +16,7 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
   if (execution.events.length > 128) execution.events.splice(0, execution.events.length - 128);
   const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target!);
   const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
-  const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && execution.events.filter((item) => item.type === "file_write" && item.target === activity.target).length >= 3);
+  const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && rewritesWithoutProof(execution.events, activity.target) >= 3);
   const causeValidated = activity.report?.kind === "cause_validated" || activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
   const approachRejected = activity.report?.kind === "approach_rejected" || activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
   updateUncertainty(state, activity);
@@ -25,7 +25,7 @@ export function observeExecution(state: TaskState, activity: TaskActivity): { in
   const investigate = progress.status !== "PROGRESS";
   const trigger = progress.status === "REGRESSED" ? "regressed" as const : repeatedFailure ? "repeated_failure" as const : repeatedRewrite ? "repeated_rewrite" as const : undefined;
   if (investigate && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
-    const next = checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1);
+    const next = checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : repeatedRewrite ? "Reassess repeated rewrite" : progress.status === "REGRESSED" ? "Reassess rejected direction" : "Reassess stalled progress"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1);
     execution.checkpoints = rejectBranch(execution.checkpoints, execution.activeCheckpointId, next, progress.reason); execution.activeCheckpointId = next.id;
   }
   if (causeValidated) {

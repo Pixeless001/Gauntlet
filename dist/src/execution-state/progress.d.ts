@@ -23,5 +23,6 @@ export interface ProgressInput {
     previousUnresolved?: UncertaintyKind[];
     diffGrowth?: number;
 }
+export declare function rewritesWithoutProof(events: ExecutionEvent[], target: string): number;
 /** Classify observable task movement without treating code volume or tool count as progress. */
 export declare function assessProgress(input: ProgressInput): ProgressDelta;

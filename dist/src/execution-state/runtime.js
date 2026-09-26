@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { activePath, rejectBranch } from "./checkpoints.js";
 import { hasSufficientProof } from "../verify/proof-selector.js";
-import { assessProgress } from "./progress.js";
+import { assessProgress, rewritesWithoutProof } from "./progress.js";
 export function observeExecution(state, activity) {
     const execution = state.control?.execution;
     if (!execution)
@@ -14,7 +14,7 @@ export function observeExecution(state, activity) {
         execution.events.splice(0, execution.events.length - 128);
     const failures = execution.events.filter((item) => item.type === "failure" && item.target).map((item) => item.target);
     const repeatedFailure = Boolean(activity.target && activity.outcome === "fail" && failures.filter((target) => target === activity.target).length >= 2);
-    const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && execution.events.filter((item) => item.type === "file_write" && item.target === activity.target).length >= 3);
+    const repeatedRewrite = Boolean(activity.kind === "file_write" && activity.target && rewritesWithoutProof(execution.events, activity.target) >= 3);
     const causeValidated = activity.report?.kind === "cause_validated" || activity.kind === "decision_signal" && activity.outcome === "pass" && Boolean(activity.target?.startsWith("cause:"));
     const approachRejected = activity.report?.kind === "approach_rejected" || activity.kind === "decision_signal" && activity.outcome === "fail" && Boolean(activity.target?.startsWith("reject:"));
     updateUncertainty(state, activity);
@@ -23,7 +23,7 @@ export function observeExecution(state, activity) {
     const investigate = progress.status !== "PROGRESS";
     const trigger = progress.status === "REGRESSED" ? "regressed" : repeatedFailure ? "repeated_failure" : repeatedRewrite ? "repeated_rewrite" : undefined;
     if (investigate && active(execution.checkpoints, execution.activeCheckpointId)?.kind !== "investigation") {
-        const next = checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : "Reassess repeated rewrite"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1);
+        const next = checkpoint("investigation", `${repeatedFailure ? "Investigate repeated failure" : repeatedRewrite ? "Reassess repeated rewrite" : progress.status === "REGRESSED" ? "Reassess rejected direction" : "Reassess stalled progress"}: ${activity.target}`, execution.activeCheckpointId, execution.nextEvent - 1);
         execution.checkpoints = rejectBranch(execution.checkpoints, execution.activeCheckpointId, next, progress.reason);
         execution.activeCheckpointId = next.id;
     }
