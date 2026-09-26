@@ -32,7 +32,7 @@ import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.
 import { domainCandidates } from "../domains/resolver.js";
 import { graphExpansionCandidate, inspectImpact } from "../intelligence/working-graph.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
-import { remainingProof } from "../verify/proof-selector.js";
+import { obtainableProof, remainingProof } from "../verify/proof-selector.js";
 import { ArtifactStore } from "../output/store.js";
 import { coldViewHasEvidence, compileWorkerPacket, createVerificationView } from "../evidence/packets.js";
 import { CapabilityRegistry } from "../capabilities/registry.js";
@@ -336,7 +336,7 @@ export class GauntletEngine {
         const supplied = ["diff", ...(structural ? ["graph"] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test"] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule"])];
         state.control.availableProof = [...new Set(supplied)];
         beforeStop.decision.proofGain = [...beforeStop.decision.proofGain, ...results.map((result) => result.proof).filter((item) => Boolean(item))];
-        const obtainable = ["diff", "repository_rule", ...(currentIndex ? ["search"] : []), ...(structural || currentIndex ? ["graph"] : []), ...(plan.checks.some((check) => check.id.includes("test")) ? ["test"] : []), ...(this.options.availableProof ?? [])];
+        const obtainable = obtainableProof({ hasIndex: Boolean(currentIndex), hasStructural: Boolean(structural), hasTestCheck: plan.checks.some((check) => check.id.includes("test")), extra: this.options.availableProof });
         const outstanding = machinePassed && state.control?.uncertainty ? remainingProof(state.control.uncertainty, supplied, obtainable) : [];
         for (const item of outstanding)
             state.findings.push({ code: `unresolved-proof-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.proof} proof before completion.`, proof: [] });

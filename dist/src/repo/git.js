@@ -33,6 +33,9 @@ export async function changedFiles(cwd, baseline) {
             }
             else if (!deltas.has(path) && (current[path] || !baseline.status.includes(path)))
                 deltas.set(path, lineDelta(path, [], current[path]?.lineHashes ?? []));
+            // Deleted before the task started and still deleted: `git diff <head>` reports its whole body as removed.
+            else if (deltas.has(path) && !current[path] && baseline.status.includes(path))
+                deltas.delete(path);
         }
         return [...deltas.values()].sort((a, b) => a.path.localeCompare(b.path));
     }

@@ -33,7 +33,7 @@ import { loadStructuralIndex, saveStructuralIndex } from "../intelligence/store.
 import { domainCandidates } from "../domains/resolver.js";
 import { graphExpansionCandidate, inspectImpact } from "../intelligence/working-graph.js";
 import { reconstruct } from "../execution-state/reconstruct.js";
-import { remainingProof, type ProofKind } from "../verify/proof-selector.js";
+import { obtainableProof, remainingProof, type ProofKind } from "../verify/proof-selector.js";
 import { ArtifactStore } from "../output/store.js";
 import { coldViewHasEvidence, compileWorkerPacket, createVerificationView, type WorkerPacket } from "../evidence/packets.js";
 import { CapabilityRegistry, type Capability, type CapabilityKind } from "../capabilities/registry.js";
@@ -289,7 +289,7 @@ export class GauntletEngine {
     const supplied: ProofKind[] = ["diff", ...(structural ? ["graph" as const] : []), ...(results.some((result) => result.status === "pass" && result.id.includes("test")) ? ["test" as const] : []), ...(state.findings.some((item) => item.code.startsWith("convention-")) ? [] : ["repository_rule" as const])];
     state.control.availableProof = [...new Set(supplied)];
     beforeStop.decision.proofGain = [...beforeStop.decision.proofGain, ...results.map((result) => result.proof).filter((item): item is string => Boolean(item))];
-    const obtainable: ProofKind[] = ["diff", "repository_rule", ...(currentIndex ? ["search" as const] : []), ...(structural || currentIndex ? ["graph" as const] : []), ...(plan.checks.some((check) => check.id.includes("test")) ? ["test" as const] : []), ...(this.options.availableProof ?? [])];
+    const obtainable = obtainableProof({ hasIndex: Boolean(currentIndex), hasStructural: Boolean(structural), hasTestCheck: plan.checks.some((check) => check.id.includes("test")), extra: this.options.availableProof });
     const outstanding = machinePassed && state.control?.uncertainty ? remainingProof(state.control.uncertainty, supplied, obtainable) : [];
     for (const item of outstanding) state.findings.push({ code: `unresolved-proof-${item.uncertainty}`, severity: "warning", blocking: true, message: `${item.uncertainty} remains unresolved; provide ${item.proof} proof before completion.`, proof: [] });
     if (machinePassed && state.control.uncertainty) for (const kind of Object.keys(state.control.uncertainty) as (keyof typeof state.control.uncertainty)[]) if (state.control.uncertainty[kind] !== "irrelevant" && hasSufficientProof(kind, supplied)) state.control.uncertainty[kind] = "resolved";

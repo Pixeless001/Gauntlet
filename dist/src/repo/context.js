@@ -6,8 +6,14 @@ import { selectInstructionSections } from "./instructions.js";
 import { buildStructuralIndex } from "../intelligence/index.js";
 import { workingGraph } from "../intelligence/working-graph.js";
 import { selectMarginal } from "../context/marginality.js";
+// Build output, IDE state and archived reference trees are never task context (and their nested
+// AGENTS.md/CLAUDE.md are another project's rules) unless the task names a path inside them.
+const GENERATED_ROOTS = new Set(["archive", "archive-refs", "build", "out", "target", ".gradle", ".idea", ".kotlin", ".venv", "venv", "__pycache__", "coverage", "vendor"]);
+const isGenerated = (path) => GENERATED_ROOTS.has(path.split("/")[0] ?? "");
 export async function selectContext(cwd, contract, limit = 12, conventions = [], index) {
-    const files = index?.files ?? await walk(cwd);
+    const all = index?.files ?? await walk(cwd);
+    const named = (path) => contract.explicitPaths.some((item) => path.toLowerCase().includes(item.replaceAll("*", "").toLowerCase()));
+    const files = all.filter((path) => !isGenerated(path) || named(path));
     const explicit = contract.explicitPaths.filter((path) => files.includes(path));
     const relationships = await findRelationships(cwd, explicit, files), related = new Map(relationships.map((item) => [item.path, item]));
     const structural = index && explicit.length ? await buildStructuralIndex(cwd, index, [...explicit, ...relationships.map((item) => item.path)], 80) : null;

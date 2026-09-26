@@ -22,3 +22,9 @@ export function remainingProof(uncertainty: UncertaintyState, supplied: ProofKin
   }
   return result;
 }
+
+/** Proof the stop check can really produce. `graph` is built by the engine itself, so it is never
+ *  something the agent can be asked to provide when the engine did not build it. */
+export function obtainableProof(input: { hasIndex: boolean; hasStructural: boolean; hasTestCheck: boolean; extra?: ProofKind[] | undefined }): ProofKind[] {
+  return ["diff", "repository_rule", ...(input.hasIndex ? ["search" as const] : []), ...(input.hasStructural ? ["graph" as const] : []), ...(input.hasTestCheck ? ["test" as const] : []), ...(input.extra ?? [])];
+}

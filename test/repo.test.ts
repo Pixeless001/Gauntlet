@@ -115,3 +115,19 @@ test("ranks direct imports and corresponding tests after the explicit target", (
   const packet = await selectContext(cwd, contract("Change src/retry.ts", { explicitPaths: ["src/retry.ts"], expectedFrontier: ["src/retry.ts"] }));
   assert.equal(packet.entries[0]?.path, "src/retry.ts"); assert.ok(packet.entries.some((entry) => entry.path === "src/wait.ts" && entry.reason.includes("imported"))); assert.ok(packet.entries.some((entry) => entry.path === "src/retry.test.ts" && entry.reason.includes("tests")));
 }));
+
+test("files deleted before the task and still deleted are not task changes", () => fixture(async (cwd) => {
+  await run("git", ["init"], cwd); await run("git", ["config", "user.email", "test@example.com"], cwd); await run("git", ["config", "user.name", "Test"], cwd);
+  await writeFile(join(cwd, "ignore.txt"), "a\nb\nc\n"); await run("git", ["add", "."], cwd); await run("git", ["commit", "-m", "base"], cwd);
+  await rm(join(cwd, "ignore.txt")); const baseline = await captureBaseline(cwd);
+  assert.deepEqual(await changedFiles(cwd, baseline), []);
+}));
+
+test("context skips archived and generated trees unless a path in them is named", () => fixture(async (cwd) => {
+  await mkdir(join(cwd, "src"), { recursive: true }); await mkdir(join(cwd, "archive-refs/other"), { recursive: true }); await mkdir(join(cwd, "build"));
+  await writeFile(join(cwd, "src/retry.ts"), ""); await writeFile(join(cwd, "archive-refs/other/retry.ts"), ""); await writeFile(join(cwd, "archive-refs/other/CLAUDE.md"), "other project rule"); await writeFile(join(cwd, "build/retry.class"), "");
+  const packet = await selectContext(cwd, contract("Fix retry handling", { explicitPaths: [], expectedFrontier: [] }));
+  assert.deepEqual(packet.entries.map((entry) => entry.path), ["src/retry.ts"]); assert.deepEqual(packet.instructions, []);
+  const named = await selectContext(cwd, contract("Fix archive-refs/other/retry.ts", { explicitPaths: ["archive-refs/other/retry.ts"], expectedFrontier: [] }));
+  assert.ok(named.entries.some((entry) => entry.path === "archive-refs/other/retry.ts"));
+}));

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolvePackageKnowledge } from "../src/knowledge/resolver.js";
 import { initialUncertainty } from "../src/control/uncertainty.js";
-import { hasSufficientProof, remainingProof } from "../src/verify/proof-selector.js";
+import { hasSufficientProof, obtainableProof, remainingProof } from "../src/verify/proof-selector.js";
 import { correctionPacket } from "../src/verify/correction.js";
 import { contract } from "./support.js";
 
@@ -50,4 +50,12 @@ test("regression uncertainty requires both structural impact and behavioral proo
 test("correction packets are bounded and proof backed", () => {
   const packet = correctionPacket([{ code: "route", severity: "error", blocking: true, message: "Route bypasses repository layer", proof: ["src/route.ts:4"] }], ["src/route.ts"]);
   assert.deepEqual(packet?.scope, ["src/route.ts"]); assert.deepEqual(packet?.proof, ["src/route.ts:4"]); assert.equal(packet?.uncertainty, "regression");
+});
+
+test("graph proof is only obtainable when the engine built it", () => {
+  assert.ok(!obtainableProof({ hasIndex: true, hasStructural: false, hasTestCheck: false }).includes("graph"));
+  assert.ok(obtainableProof({ hasIndex: true, hasStructural: true, hasTestCheck: false }).includes("graph"));
+  const uncertainty = initialUncertainty(contract("Fix race"), "elevated");
+  const asked = remainingProof(uncertainty, ["diff"], obtainableProof({ hasIndex: true, hasStructural: false, hasTestCheck: false }));
+  assert.ok(asked.every((item) => item.proof !== "graph"));
 });

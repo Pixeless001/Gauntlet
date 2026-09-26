@@ -13,11 +13,18 @@ import { selectMarginal, type Contribution } from "../context/marginality.js";
 import type { ActiveExecutionContext } from "../execution-state/reconstruct.js";
 import type { ProofPacket } from "../context/proof-views.js";
 
+// Build output, IDE state and archived reference trees are never task context (and their nested
+// AGENTS.md/CLAUDE.md are another project's rules) unless the task names a path inside them.
+const GENERATED_ROOTS = new Set(["archive", "archive-refs", "build", "out", "target", ".gradle", ".idea", ".kotlin", ".venv", "venv", "__pycache__", "coverage", "vendor"]);
+const isGenerated = (path: string) => GENERATED_ROOTS.has(path.split("/")[0] ?? "");
+
 export interface ContextEntry { path: string; reason: string; score: number }
 export interface ContextPacket { entries: ContextEntry[]; instructions: string[]; conventions: ConventionFact[]; lessons: RepositoryLesson[]; proof?: ProofPacket[]; excluded: number; execution?: ActiveExecutionContext }
 
 export async function selectContext(cwd: string, contract: TaskContract, limit = 12, conventions: ConventionFact[] = [], index?: RepoIndex): Promise<ContextPacket> {
-  const files = index?.files ?? await walk(cwd);
+  const all = index?.files ?? await walk(cwd);
+  const named = (path: string) => contract.explicitPaths.some((item) => path.toLowerCase().includes(item.replaceAll("*", "").toLowerCase()));
+  const files = all.filter((path) => !isGenerated(path) || named(path));
   const explicit = contract.explicitPaths.filter((path) => files.includes(path));
   const relationships = await findRelationships(cwd, explicit, files), related = new Map(relationships.map((item) => [item.path, item]));
   const structural = index && explicit.length ? await buildStructuralIndex(cwd, index, [...explicit, ...relationships.map((item) => item.path)], 80) : null;

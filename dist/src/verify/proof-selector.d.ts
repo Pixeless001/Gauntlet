@@ -7,3 +7,11 @@ export declare function remainingProof(uncertainty: UncertaintyState, supplied: 
     uncertainty: UncertaintyKind;
     proof: ProofKind;
 }[];
+/** Proof the stop check can really produce. `graph` is built by the engine itself, so it is never
+ *  something the agent can be asked to provide when the engine did not build it. */
+export declare function obtainableProof(input: {
+    hasIndex: boolean;
+    hasStructural: boolean;
+    hasTestCheck: boolean;
+    extra?: ProofKind[] | undefined;
+}): ProofKind[];
