@@ -3,7 +3,7 @@ export interface ContractInspection {
     files?: string[];
     dependencies?: string[];
 }
-export declare function extractContract(intent: string, inspection?: ContractInspection): TaskContract;
+export declare function extractContract(rawIntent: string, inspection?: ContractInspection): TaskContract;
 export interface Ambiguity {
     costly: boolean;
     question?: string;

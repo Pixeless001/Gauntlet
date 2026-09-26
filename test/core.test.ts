@@ -152,3 +152,9 @@ test("task state never persists raw tool payloads", async () => {
     assert.doesNotMatch(text, /secret-(?:input|output)/);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
+
+test("paste markers do not become the goal", async () => {
+  const { extractContract } = await import("../src/core/intent.js");
+  const parsed = extractContract("<pasted_content id=\"70ad\">\nFix the flyer stalling\n</pasted_content id=\"70ad\">");
+  assert.equal(parsed.goal, "Fix the flyer stalling");
+});

@@ -2,7 +2,11 @@ import type { TaskContract } from "./events.js";
 
 export interface ContractInspection { files?: string[]; dependencies?: string[] }
 
-export function extractContract(intent: string, inspection: ContractInspection = {}): TaskContract {
+// Harness paste markers are transport wrapping, not part of the task: left in, they become the goal line.
+const stripPasteMarkers = (text: string) => text.replace(/<\/?pasted_content[^>]*>/g, "");
+
+export function extractContract(rawIntent: string, inspection: ContractInspection = {}): TaskContract {
+  const intent = stripPasteMarkers(rawIntent);
   const paths = intent.match(/\b(?:[\w.-]+\/)*[\w*-]+\.[\w*]+\b/g) ?? [];
   const criteria = intent.split(/\n/).map((line) => line.trim()).filter((line) => /^(?:[-*]|\d+[.)])\s+/.test(line)).map((line) => line.replace(/^(?:[-*]|\d+[.)])\s+/, ""));
   const constraints = criteria.filter((line) => /\b(?:must|should|do not|don't|without|preserve|avoid|only)\b/i.test(line));
