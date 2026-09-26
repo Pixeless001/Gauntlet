@@ -1,4 +1,5 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { HarnessName } from "../adapters/types.js";
 import { adapter } from "../adapters/install.js";
@@ -6,6 +7,7 @@ import { GauntletEngine } from "../core/engine.js";
 import { formatSummary } from "../reporting/summary.js";
 import { correctionPacket } from "../verify/correction.js";
 import { ArtifactStore } from "../output/store.js";
+import { shouldBlockStop } from "./stop-policy.js";
 
 type NativeEvent = Record<string, unknown>;
 
@@ -67,9 +69,15 @@ export async function dispatchHook(harness: HarnessName, input: NativeEvent, nat
   }
   if (event.type === "before_stop") {
     if (!await existsTask(engine, id)) return {};
-    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join(""), acceptable = result.completion === "complete" || result.files === 0;
+    const result = await engine.finish(id), state = await engine.state(id), correction = correctionPacket(state.findings, state.workingSet), summary = [formatSummary(result, false), correction ? `\nCorrection:\n${JSON.stringify(correction)}` : ""].join("");
+    const blockingCodes = state.findings.filter((finding) => finding.blocking).map((finding) => finding.code), failedChecks = (result.proof ?? []).filter((item) => item.status !== "pass").map((item) => item.id);
+    // The same failure with the same footprint is reported once; a new turn restarting the task must not repeat it.
+    const fingerprint = createHash("sha256").update(JSON.stringify([blockingCodes, failedChecks, result.files, result.added, result.removed])).digest("hex"), marker = join(engine.cwd, ".gauntlet", "last-stop-block");
+    const lastBlocked = await readFile(marker, "utf8").then((text) => text.trim(), () => undefined);
+    const block = shouldBlockStop({ completion: result.completion, files: result.files, blockingCodes, failedChecks, planMode: input.permission_mode === "plan", stopHookActive: input.stop_hook_active === true, fingerprint, lastBlocked }), acceptable = !block;
     const alreadyContinued = result.attempts > 1;
-    if (!acceptable && !alreadyContinued) await engine.retry(id); else await engine.close(id);
+    if (block) await writeFile(marker, fingerprint).catch(() => undefined); else if (result.completion === "complete" || result.files === 0) await rm(marker, { force: true });
+    if (block && !alreadyContinued) await engine.retry(id); else await engine.close(id);
     // Only the blocking `reason` reaches the model; a systemMessage would render for the user, and convention notices already reach the model via PostToolUse.
     return stopOutput(harness, summary, acceptable, alreadyContinued);
   }

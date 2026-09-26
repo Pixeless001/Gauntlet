@@ -199,8 +199,34 @@ for (const fixture of [
 ]) test(`${fixture.harness} executes its native lifecycle contract`, async () => {
   const cwd = await mkdtemp(join(tmpdir(), `gauntlet-${fixture.harness}-contract-`));
   try {
-    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(0)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.ts"), "before\n");
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(1)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.ts"), "before\n");
     const identity = { session_id: "contract-session", cwd }; await dispatchHook(fixture.harness, { ...identity, prompt: "Maintain contract" }, fixture.start); await dispatchHook(fixture.harness, { ...identity, tool_name: "Shell", error_message: "failed" }, fixture.activity); await writeFile(join(cwd, "task.ts"), "after\n");
     const output = await dispatchHook(fixture.harness, identity, fixture.stop); assert.ok(fixture.harness === "cursor" ? String(output.followup_message).includes("not clean and verified") : output.decision === "block");
+  } finally { await rm(cwd, { recursive: true, force: true }); }
+});
+
+test("stop policy blocks only real, new failures", async () => {
+  const { shouldBlockStop } = await import("../src/hooks/stop-policy.js");
+  const base = { completion: "incomplete", files: 2, blockingCodes: [] as string[], failedChecks: ["test"], planMode: false, stopHookActive: false, fingerprint: "a", lastBlocked: undefined };
+  assert.equal(shouldBlockStop(base), true);
+  assert.equal(shouldBlockStop({ ...base, failedChecks: [], blockingCodes: ["unresolved-proof-behavior"] }), true, "a missing obtainable proof blocks once");
+  assert.equal(shouldBlockStop({ ...base, failedChecks: [], blockingCodes: [] }), false);
+  assert.equal(shouldBlockStop({ ...base, planMode: true }), false);
+  assert.equal(shouldBlockStop({ ...base, stopHookActive: true }), false);
+  assert.equal(shouldBlockStop({ ...base, files: 0 }), false);
+  assert.equal(shouldBlockStop({ ...base, completion: "complete" }), false);
+  assert.equal(shouldBlockStop({ ...base, lastBlocked: "a" }), false, "an identical failure is reported once");
+  assert.equal(shouldBlockStop({ ...base, lastBlocked: "b" }), true);
+});
+
+test("an identical failure is not re-blocked on the next turn", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "gauntlet-repeat-"));
+  try {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ scripts: { typecheck: "node -e \"process.exit(1)\"" } })); await writeFile(join(cwd, "package-lock.json"), "{}"); await writeFile(join(cwd, "task.ts"), "before\n");
+    await dispatchHook("claude-code", { session_id: "one", cwd, prompt: "Change task.ts" }, "UserPromptSubmit"); await writeFile(join(cwd, "task.ts"), "after\n");
+    assert.equal((await dispatchHook("claude-code", { session_id: "one", cwd }, "Stop")).decision, "block");
+    await dispatchHook("claude-code", { session_id: "two", cwd, prompt: "Explain the failure" }, "UserPromptSubmit");
+    assert.equal((await dispatchHook("claude-code", { session_id: "two", cwd }, "Stop")).decision, undefined);
+    assert.equal((await dispatchHook("claude-code", { session_id: "three", cwd, prompt: "Keep going", permission_mode: "plan" }, "UserPromptSubmit")).decision, undefined);
   } finally { await rm(cwd, { recursive: true, force: true }); }
 });
