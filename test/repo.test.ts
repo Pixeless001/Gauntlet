@@ -131,3 +131,12 @@ test("context skips archived and generated trees unless a path in them is named"
   const named = await selectContext(cwd, contract("Fix archive-refs/other/retry.ts", { explicitPaths: ["archive-refs/other/retry.ts"], expectedFrontier: [] }));
   assert.ok(named.entries.some((entry) => entry.path === "archive-refs/other/retry.ts"));
 }));
+
+test("ignores tool state and data files, and needs two task terms for a path-only match", () => fixture(async (cwd) => {
+  await mkdir(join(cwd, "run/saves/minecraft"), { recursive: true }); await mkdir(join(cwd, ".gauntlet/sessions"), { recursive: true }); await mkdir(join(cwd, "src"));
+  await writeFile(join(cwd, "run/saves/minecraft/world.dat"), ""); await writeFile(join(cwd, ".gauntlet/sessions/minecraft.json"), "");
+  await writeFile(join(cwd, "src/SweepScan.kt"), ""); await writeFile(join(cwd, "src/render_scan_engine.kt"), "");
+  const packet = await selectContext(cwd, contract("Scan the minecraft render engine and evaluate similar problems across shared utilities"));
+  const paths = packet.entries.map((entry) => entry.path);
+  assert.deepEqual(paths, ["src/render_scan_engine.kt"]);
+}));
